@@ -18,13 +18,17 @@ export const CredentialsSettings: React.FC = () => {
 
   // Discord token state
   const [hasDiscordToken, setHasDiscordToken] = useState(false);
-  const [maskedDiscordToken, setMaskedDiscordToken] = useState<string | null>(null);
+  const [maskedDiscordToken, setMaskedDiscordToken] = useState<string | null>(
+    null,
+  );
 
   // Supabase state
   const [supabaseUrl, setSupabaseUrl] = useState("");
   const [supabaseUrlInput, setSupabaseUrlInput] = useState("");
   const [hasSupabaseKey, setHasSupabaseKey] = useState(false);
-  const [maskedSupabaseKey, setMaskedSupabaseKey] = useState<string | null>(null);
+  const [maskedSupabaseKey, setMaskedSupabaseKey] = useState<string | null>(
+    null,
+  );
   const [supabaseKeyInput, setSupabaseKeyInput] = useState("");
 
   // UI state

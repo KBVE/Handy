@@ -24,7 +24,9 @@ import {
 
 export const DevOpsSettings: React.FC = () => {
   const { t } = useTranslation();
-  const [dependencies, setDependencies] = useState<DevOpsDependencies | null>(null);
+  const [dependencies, setDependencies] = useState<DevOpsDependencies | null>(
+    null,
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [enabledAgents, setEnabledAgents] = useState<string[]>([]);
@@ -73,7 +75,8 @@ export const DevOpsSettings: React.FC = () => {
     }
   };
 
-  const isAgentEnabled = (agentType: string) => enabledAgents.includes(agentType);
+  const isAgentEnabled = (agentType: string) =>
+    enabledAgents.includes(agentType);
 
   return (
     <div className="flex flex-col gap-4">
@@ -139,7 +142,9 @@ export const DevOpsSettings: React.FC = () => {
             </div>
 
             {/* Required dependencies */}
-            <div className="text-xs text-mid-gray/70 mb-2 mt-2">{t("devops.dependencies.required")}</div>
+            <div className="text-xs text-mid-gray/70 mb-2 mt-2">
+              {t("devops.dependencies.required")}
+            </div>
             <DependencyStatus
               name="gh"
               displayName="GitHub CLI"
@@ -154,7 +159,9 @@ export const DevOpsSettings: React.FC = () => {
             />
 
             {/* AI Agents (at least one required) */}
-            <div className="text-xs text-mid-gray/70 mb-2 mt-4">{t("devops.dependencies.agents")}</div>
+            <div className="text-xs text-mid-gray/70 mb-2 mt-4">
+              {t("devops.dependencies.agents")}
+            </div>
             <DependencyStatus
               name="claude"
               displayName="Claude Code"
@@ -187,7 +194,9 @@ export const DevOpsSettings: React.FC = () => {
             />
 
             {/* Local LLM Servers */}
-            <div className="text-xs text-mid-gray/70 mb-2 mt-4">{t("devops.dependencies.localLlm")}</div>
+            <div className="text-xs text-mid-gray/70 mb-2 mt-4">
+              {t("devops.dependencies.localLlm")}
+            </div>
             <DependencyStatus
               name="ollama"
               displayName="Ollama"
@@ -212,7 +221,8 @@ export const DevOpsSettings: React.FC = () => {
             {/* Enabled agents summary */}
             {enabledAgents.length > 0 && (
               <div className="mt-3 pt-3 border-t border-mid-gray/20 text-xs text-mid-gray">
-                {t("devops.dependencies.enabledAgents")}: {enabledAgents.join(", ")}
+                {t("devops.dependencies.enabledAgents")}:{" "}
+                {enabledAgents.join(", ")}
               </div>
             )}
           </div>

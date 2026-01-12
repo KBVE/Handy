@@ -76,7 +76,7 @@ export async function fetchMyProfile(): Promise<KBVEProfile> {
  * Fetch a public user profile by username
  */
 export async function fetchProfileByUsername(
-  username: string
+  username: string,
 ): Promise<KBVEProfile> {
   const response = await fetch(
     `${KBVE_API_URL}/api/v1/profile/${encodeURIComponent(username)}`,
@@ -85,7 +85,7 @@ export async function fetchProfileByUsername(
       headers: {
         "Content-Type": "application/json",
       },
-    }
+    },
   );
 
   if (!response.ok) {
@@ -126,7 +126,11 @@ export function validateUsername(username: string): UsernameValidationResult {
   const trimmed = username.trim();
 
   if (!trimmed) {
-    return { valid: false, error: "empty", message: "Username cannot be empty" };
+    return {
+      valid: false,
+      error: "empty",
+      message: "Username cannot be empty",
+    };
   }
 
   if (trimmed.length < 3) {

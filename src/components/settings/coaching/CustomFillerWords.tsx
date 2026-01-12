@@ -25,7 +25,10 @@ export const CustomFillerWords: React.FC<CustomFillerWordsProps> = React.memo(
         sanitizedWord.length <= 50 &&
         !customFillerWords.includes(sanitizedWord)
       ) {
-        updateSetting("custom_filler_words", [...customFillerWords, sanitizedWord]);
+        updateSetting("custom_filler_words", [
+          ...customFillerWords,
+          sanitizedWord,
+        ]);
         setNewWord("");
       }
     };

@@ -221,7 +221,9 @@ export const SidecarStatus: React.FC = () => {
                 {t("footer.popover.embeddingModel")}
               </span>
               <span
-                className={memoryModelLoaded ? "text-green-400" : "text-text/40"}
+                className={
+                  memoryModelLoaded ? "text-green-400" : "text-text/40"
+                }
               >
                 {memoryModelLoaded
                   ? t("footer.popover.loaded")

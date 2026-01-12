@@ -47,28 +47,37 @@ interface FillerAnalysis {
 export const CoachSettings: React.FC = () => {
   const { t } = useTranslation();
   const { getSetting } = useSettings();
-  const fillerDetectionEnabled = getSetting("filler_detection_enabled") ?? false;
+  const fillerDetectionEnabled =
+    getSetting("filler_detection_enabled") ?? false;
 
   // Live monitor state
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
-  const [trafficStatus, setTrafficStatus] = useState<TrafficLightStatus>("idle");
+  const [trafficStatus, setTrafficStatus] =
+    useState<TrafficLightStatus>("idle");
   const [partialText, setPartialText] = useState<string>("");
   const [finalText, setFinalText] = useState<string>("");
-  const [fillerAnalysis, setFillerAnalysis] = useState<FillerAnalysis | null>(null);
+  const [fillerAnalysis, setFillerAnalysis] = useState<FillerAnalysis | null>(
+    null,
+  );
   const [sessionFillerCount, setSessionFillerCount] = useState(0);
   const [sessionWordCount, setSessionWordCount] = useState(0);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [partialMatches, setPartialMatches] = useState<FillerMatch[]>([]);
-  const [partialBreakdown, setPartialBreakdown] = useState<FillerBreakdownItem[]>([]);
+  const [partialBreakdown, setPartialBreakdown] = useState<
+    FillerBreakdownItem[]
+  >([]);
   const [showSettings, setShowSettings] = useState(false);
 
   // Calculate traffic light status based on filler percentage
-  const calculateTrafficStatus = useCallback((fillerPercentage: number): TrafficLightStatus => {
-    if (fillerPercentage < 5) return "green";
-    if (fillerPercentage < 15) return "yellow";
-    return "red";
-  }, []);
+  const calculateTrafficStatus = useCallback(
+    (fillerPercentage: number): TrafficLightStatus => {
+      if (fillerPercentage < 5) return "green";
+      if (fillerPercentage < 15) return "yellow";
+      return "red";
+    },
+    [],
+  );
 
   // Recording duration timer
   useEffect(() => {
@@ -109,24 +118,42 @@ export const CoachSettings: React.FC = () => {
       setIsTranscribing(false);
     });
 
-    const unlistenPartial = listen<PartialTranscription>("partial-transcription", (event) => {
-      const { text, filler_count, word_count, filler_percentage, matches, filler_breakdown } = event.payload;
-      setPartialText(text);
-      setSessionFillerCount(filler_count);
-      setSessionWordCount(word_count);
-      setPartialMatches(matches);
-      setPartialBreakdown(filler_breakdown);
-      setTrafficStatus(calculateTrafficStatus(filler_percentage));
-    });
+    const unlistenPartial = listen<PartialTranscription>(
+      "partial-transcription",
+      (event) => {
+        const {
+          text,
+          filler_count,
+          word_count,
+          filler_percentage,
+          matches,
+          filler_breakdown,
+        } = event.payload;
+        setPartialText(text);
+        setSessionFillerCount(filler_count);
+        setSessionWordCount(word_count);
+        setPartialMatches(matches);
+        setPartialBreakdown(filler_breakdown);
+        setTrafficStatus(calculateTrafficStatus(filler_percentage));
+      },
+    );
 
-    const unlistenFiller = listen<FillerAnalysis>("filler-analysis", (event) => {
-      setFillerAnalysis(event.payload);
-      setTrafficStatus(calculateTrafficStatus(event.payload.filler_percentage));
-    });
+    const unlistenFiller = listen<FillerAnalysis>(
+      "filler-analysis",
+      (event) => {
+        setFillerAnalysis(event.payload);
+        setTrafficStatus(
+          calculateTrafficStatus(event.payload.filler_percentage),
+        );
+      },
+    );
 
-    const unlistenTranscription = listen<string>("transcription-result", (event) => {
-      setFinalText(event.payload);
-    });
+    const unlistenTranscription = listen<string>(
+      "transcription-result",
+      (event) => {
+        setFinalText(event.payload);
+      },
+    );
 
     return () => {
       unlistenOverlay.then((fn) => fn());
@@ -168,12 +195,16 @@ export const CoachSettings: React.FC = () => {
 
     const parts: React.ReactNode[] = [];
     let lastIndex = 0;
-    const sortedMatches = [...matches].sort((a, b) => a.start_index - b.start_index);
+    const sortedMatches = [...matches].sort(
+      (a, b) => a.start_index - b.start_index,
+    );
 
     sortedMatches.forEach((match, i) => {
       if (match.start_index > lastIndex) {
         parts.push(
-          <span key={`text-${i}`}>{text.slice(lastIndex, match.start_index)}</span>
+          <span key={`text-${i}`}>
+            {text.slice(lastIndex, match.start_index)}
+          </span>,
         );
       }
       parts.push(
@@ -183,7 +214,7 @@ export const CoachSettings: React.FC = () => {
           title={t("live.fillerWord")}
         >
           {text.slice(match.start_index, match.end_index)}
-        </span>
+        </span>,
       );
       lastIndex = match.end_index;
     });
@@ -206,7 +237,9 @@ export const CoachSettings: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-lg font-medium">{getStatusMessage()}</p>
-                <p className="text-sm text-text/60">{getTrafficLightMessage()}</p>
+                <p className="text-sm text-text/60">
+                  {getTrafficLightMessage()}
+                </p>
               </div>
               {isRecording && (
                 <div className="text-2xl font-mono text-logo-primary">
@@ -237,11 +270,17 @@ export const CoachSettings: React.FC = () => {
               </div>
               <div className="flex-1 bg-background-dark/30 rounded-lg p-3 text-center">
                 <p className="text-2xl font-bold text-text">
-                  {(fillerAnalysis?.filler_percentage ??
-                    (sessionWordCount > 0 ? (sessionFillerCount / sessionWordCount) * 100 : 0)
-                  ).toFixed(1)}%
+                  {(
+                    fillerAnalysis?.filler_percentage ??
+                    (sessionWordCount > 0
+                      ? (sessionFillerCount / sessionWordCount) * 100
+                      : 0)
+                  ).toFixed(1)}
+                  %
                 </p>
-                <p className="text-text/60">{t("live.stats.fillerPercentage")}</p>
+                <p className="text-text/60">
+                  {t("live.stats.fillerPercentage")}
+                </p>
               </div>
             </div>
           </div>
@@ -255,7 +294,10 @@ export const CoachSettings: React.FC = () => {
             <div className="bg-background-dark/30 rounded-lg p-4 min-h-[100px] max-h-[300px] overflow-y-auto">
               <p className="text-text leading-relaxed">
                 {finalText
-                  ? renderTextWithHighlights(finalText, fillerAnalysis?.matches ?? [])
+                  ? renderTextWithHighlights(
+                      finalText,
+                      fillerAnalysis?.matches ?? [],
+                    )
                   : renderTextWithHighlights(partialText, partialMatches)}
               </p>
             </div>
@@ -264,21 +306,24 @@ export const CoachSettings: React.FC = () => {
       )}
 
       {/* Filler Word Breakdown */}
-      {((fillerAnalysis && fillerAnalysis.filler_breakdown.length > 0) || partialBreakdown.length > 0) && (
+      {((fillerAnalysis && fillerAnalysis.filler_breakdown.length > 0) ||
+        partialBreakdown.length > 0) && (
         <SettingsGroup title={t("live.breakdown.title")}>
           <div className="p-4">
             <div className="flex flex-wrap gap-2">
-              {(fillerAnalysis?.filler_breakdown ?? partialBreakdown).map(({ word, count }) => (
-                <div
-                  key={word}
-                  className="bg-red-500/20 text-red-400 px-3 py-1 rounded-full text-sm flex items-center gap-2"
-                >
-                  <span>{word}</span>
-                  <span className="bg-red-500/30 px-2 py-0.5 rounded-full text-xs">
-                    {count}
-                  </span>
-                </div>
-              ))}
+              {(fillerAnalysis?.filler_breakdown ?? partialBreakdown).map(
+                ({ word, count }) => (
+                  <div
+                    key={word}
+                    className="bg-red-500/20 text-red-400 px-3 py-1 rounded-full text-sm flex items-center gap-2"
+                  >
+                    <span>{word}</span>
+                    <span className="bg-red-500/30 px-2 py-0.5 rounded-full text-xs">
+                      {count}
+                    </span>
+                  </div>
+                ),
+              )}
             </div>
           </div>
         </SettingsGroup>
@@ -298,7 +343,9 @@ export const CoachSettings: React.FC = () => {
           onClick={() => setShowSettings(!showSettings)}
           className="w-full flex items-center justify-between p-4 hover:bg-background-dark/20 transition-colors"
         >
-          <span className="text-sm text-text/70">{t("coaching.settingsToggle")}</span>
+          <span className="text-sm text-text/70">
+            {t("coaching.settingsToggle")}
+          </span>
           {showSettings ? (
             <ChevronUp className="w-4 h-4 text-text/60" />
           ) : (

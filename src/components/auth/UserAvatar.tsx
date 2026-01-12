@@ -9,7 +9,10 @@ interface UserAvatarProps {
   onSignInClick?: () => void;
 }
 
-const UserAvatar: React.FC<UserAvatarProps> = ({ size = "sm", onSignInClick }) => {
+const UserAvatar: React.FC<UserAvatarProps> = ({
+  size = "sm",
+  onSignInClick,
+}) => {
   const { t } = useTranslation();
   const { isAuthenticated, isLoading, user, signOut } = useAuth();
   const [showDropdown, setShowDropdown] = useState(false);

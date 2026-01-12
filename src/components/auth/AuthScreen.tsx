@@ -1,6 +1,14 @@
 import React, { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Github, MessageCircle, Tv, WifiOff, User, Loader2, AlertCircle } from "lucide-react";
+import {
+  Github,
+  MessageCircle,
+  Tv,
+  WifiOff,
+  User,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
 import KBVETextLogo from "../icons/KBVETextLogo";
 import { useAuth } from "@/hooks/useAuth";
 import { OAuthProvider } from "@/lib/supabase";
@@ -34,7 +42,8 @@ const AuthButton: React.FC<AuthButtonProps> = ({
     variant === "primary"
       ? "bg-background-dark/50 border border-mid-gray/30 hover:border-logo-primary hover:bg-logo-primary/10 text-text"
       : "bg-transparent border border-mid-gray/20 hover:border-mid-gray/40 hover:bg-mid-gray/10 text-text/70";
-  const disabledStyles = disabled || loading ? "opacity-50 cursor-not-allowed" : "cursor-pointer";
+  const disabledStyles =
+    disabled || loading ? "opacity-50 cursor-not-allowed" : "cursor-pointer";
 
   return (
     <button
@@ -53,7 +62,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthComplete }) => {
   const { isAuthenticated, isLoading, error, signIn, cancelAuth } = useAuth();
 
   // Track which provider is being used for loading state
-  const [loadingProvider, setLoadingProvider] = React.useState<OAuthProvider | null>(null);
+  const [loadingProvider, setLoadingProvider] =
+    React.useState<OAuthProvider | null>(null);
 
   // When authentication succeeds, notify parent
   useEffect(() => {

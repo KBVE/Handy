@@ -132,7 +132,7 @@ export const useSidecarStore = create<SidecarStore>()(
             llmLoaded: event.payload.local_llm_loaded,
             ttsLoaded: event.payload.local_tts_loaded,
           });
-        }
+        },
       );
       unlisteners.push(unlistenOnichan);
 
@@ -146,7 +146,7 @@ export const useSidecarStore = create<SidecarStore>()(
             discordGuild: event.payload.guild_name ?? null,
             discordChannel: event.payload.channel_name ?? null,
           });
-        }
+        },
       );
       unlisteners.push(unlistenDiscord);
 
@@ -160,7 +160,7 @@ export const useSidecarStore = create<SidecarStore>()(
             memoryModelId: null, // MemoryState doesn't include model ID
             memoryCount: event.payload.total_memories,
           });
-        }
+        },
       );
       unlisteners.push(unlistenMemory);
 
@@ -169,7 +169,7 @@ export const useSidecarStore = create<SidecarStore>()(
         "onichan-model-download-complete",
         () => {
           refresh();
-        }
+        },
       );
       unlisteners.push(unlistenDownload);
 
@@ -318,7 +318,7 @@ export const useSidecarStore = create<SidecarStore>()(
         memoryCount: state.total_memories ?? get().memoryCount,
       });
     },
-  }))
+  })),
 );
 
 // Hook for initializing the store (call once at app startup)

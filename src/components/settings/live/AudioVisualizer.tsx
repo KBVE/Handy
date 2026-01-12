@@ -25,7 +25,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         rawLevels.map((target, i) => {
           // Smooth the transition
           return prev[i] * 0.6 + target * 0.4;
-        })
+        }),
       );
     });
 

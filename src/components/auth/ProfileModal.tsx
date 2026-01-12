@@ -99,7 +99,9 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) => {
                 <div className="flex items-center gap-3 p-3 rounded-lg bg-background-dark/50 border border-mid-gray/20">
                   <Mail className="w-5 h-5 text-text/40" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs text-text/50">{t("auth.profile.email")}</p>
+                    <p className="text-xs text-text/50">
+                      {t("auth.profile.email")}
+                    </p>
                     <p className="text-sm text-text truncate">{user.email}</p>
                   </div>
                 </div>
@@ -108,15 +110,21 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) => {
               <div className="flex items-center gap-3 p-3 rounded-lg bg-background-dark/50 border border-mid-gray/20">
                 <Shield className="w-5 h-5 text-text/40" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs text-text/50">{t("auth.profile.userId")}</p>
-                  <p className="text-sm text-text font-mono truncate">{user.id}</p>
+                  <p className="text-xs text-text/50">
+                    {t("auth.profile.userId")}
+                  </p>
+                  <p className="text-sm text-text font-mono truncate">
+                    {user.id}
+                  </p>
                 </div>
               </div>
 
               <div className="flex items-center gap-3 p-3 rounded-lg bg-background-dark/50 border border-mid-gray/20">
                 <Calendar className="w-5 h-5 text-text/40" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs text-text/50">{t("auth.profile.provider")}</p>
+                  <p className="text-xs text-text/50">
+                    {t("auth.profile.provider")}
+                  </p>
                   <p className="text-sm text-text capitalize">
                     {user.provider || t("auth.profile.unknown")}
                   </p>

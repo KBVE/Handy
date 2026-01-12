@@ -85,7 +85,9 @@ export const OnichanSettings: React.FC = () => {
   const [ttsModels, setTtsModels] = useState<OnichanModelInfo[]>([]);
   const [selectedLlmId, setSelectedLlmId] = useState<string | null>(null);
   const [selectedTtsId, setSelectedTtsId] = useState<string | null>(null);
-  const [downloadProgress, setDownloadProgress] = useState<Record<string, number>>({});
+  const [downloadProgress, setDownloadProgress] = useState<
+    Record<string, number>
+  >({});
   const [loadingModel, setLoadingModel] = useState<string | null>(null);
 
   // Auto-scroll to bottom when new messages arrive
@@ -136,7 +138,7 @@ export const OnichanSettings: React.FC = () => {
         commands.onichanGetHistory().then((history) => {
           setConversation(history);
         });
-      }
+      },
     );
 
     // Listen for conversation mode state changes
@@ -152,7 +154,10 @@ export const OnichanSettings: React.FC = () => {
         } else if (event.payload === "collecting") {
           setStatus("listening");
           setIsRecording(true);
-        } else if (event.payload === "transcribing" || event.payload === "thinking") {
+        } else if (
+          event.payload === "transcribing" ||
+          event.payload === "thinking"
+        ) {
           setStatus("thinking");
           setIsTranscribing(true);
           setIsRecording(false);
@@ -160,7 +165,7 @@ export const OnichanSettings: React.FC = () => {
           setStatus("speaking");
           setIsTranscribing(false);
         }
-      }
+      },
     );
 
     // Listen for user speech in conversation mode
@@ -168,7 +173,7 @@ export const OnichanSettings: React.FC = () => {
       "onichan-user-speech",
       (event) => {
         setLiveTranscription(event.payload);
-      }
+      },
     );
 
     const unlistenOverlay = listen<string>("show-overlay", (event) => {
@@ -196,7 +201,7 @@ export const OnichanSettings: React.FC = () => {
         if (isEnabled) {
           setLiveTranscription(event.payload.text);
         }
-      }
+      },
     );
 
     const unlistenTranscription = listen<string>(
@@ -204,7 +209,8 @@ export const OnichanSettings: React.FC = () => {
       async (event) => {
         // Get fresh state from backend to avoid stale closure issues
         const settingsResult = await commands.getAppSettings();
-        const currentSettings = settingsResult.status === "ok" ? settingsResult.data : null;
+        const currentSettings =
+          settingsResult.status === "ok" ? settingsResult.data : null;
         const isOnOnichanTab = currentSettings?.active_ui_section === "onichan";
         const onichanActive = await commands.onichanIsActive();
 
@@ -229,7 +235,7 @@ export const OnichanSettings: React.FC = () => {
         } else {
           console.log("[Onichan] Skipping - conditions not met");
         }
-      }
+      },
     );
 
     // Listen for model download progress
@@ -240,7 +246,7 @@ export const OnichanSettings: React.FC = () => {
           ...prev,
           [event.payload.model_id]: event.payload.percentage,
         }));
-      }
+      },
     );
 
     const unlistenComplete = listen<string>(
@@ -256,7 +262,7 @@ export const OnichanSettings: React.FC = () => {
         const tts = await commands.getOnichanTtsModels();
         setLlmModels(llm);
         setTtsModels(tts);
-      }
+      },
     );
 
     return () => {
@@ -342,29 +348,32 @@ export const OnichanSettings: React.FC = () => {
         }
       }
     },
-    [selectedLlmId, selectedTtsId, refreshSidecarState]
+    [selectedLlmId, selectedTtsId, refreshSidecarState],
   );
 
-  const handleLoadLlm = useCallback(async (modelId: string) => {
-    setLoadingModel(modelId);
-    try {
-      console.log(`Loading LLM model: ${modelId}`);
-      const result = await commands.loadLocalLlm(modelId);
-      console.log(`Load LLM result:`, result);
-      if (result.status === "ok") {
-        setSelectedLlmId(modelId);
-        refreshSidecarState();
-      } else {
-        console.error(`Failed to load LLM: ${result.error}`);
-        alert(`Failed to load model: ${result.error}`);
+  const handleLoadLlm = useCallback(
+    async (modelId: string) => {
+      setLoadingModel(modelId);
+      try {
+        console.log(`Loading LLM model: ${modelId}`);
+        const result = await commands.loadLocalLlm(modelId);
+        console.log(`Load LLM result:`, result);
+        if (result.status === "ok") {
+          setSelectedLlmId(modelId);
+          refreshSidecarState();
+        } else {
+          console.error(`Failed to load LLM: ${result.error}`);
+          alert(`Failed to load model: ${result.error}`);
+        }
+      } catch (error) {
+        console.error(`Error loading LLM:`, error);
+        alert(`Error loading model: ${error}`);
+      } finally {
+        setLoadingModel(null);
       }
-    } catch (error) {
-      console.error(`Error loading LLM:`, error);
-      alert(`Error loading model: ${error}`);
-    } finally {
-      setLoadingModel(null);
-    }
-  }, [refreshSidecarState]);
+    },
+    [refreshSidecarState],
+  );
 
   const handleUnloadLlm = useCallback(async () => {
     await commands.unloadLocalLlm();
@@ -372,15 +381,18 @@ export const OnichanSettings: React.FC = () => {
     refreshSidecarState();
   }, [refreshSidecarState]);
 
-  const handleLoadTts = useCallback(async (modelId: string) => {
-    setLoadingModel(modelId);
-    const result = await commands.loadLocalTts(modelId);
-    setLoadingModel(null);
-    if (result.status === "ok") {
-      setSelectedTtsId(modelId);
-      refreshSidecarState();
-    }
-  }, [refreshSidecarState]);
+  const handleLoadTts = useCallback(
+    async (modelId: string) => {
+      setLoadingModel(modelId);
+      const result = await commands.loadLocalTts(modelId);
+      setLoadingModel(null);
+      if (result.status === "ok") {
+        setSelectedTtsId(modelId);
+        refreshSidecarState();
+      }
+    },
+    [refreshSidecarState],
+  );
 
   const handleUnloadTts = useCallback(async () => {
     await commands.unloadLocalTts();
@@ -418,7 +430,7 @@ export const OnichanSettings: React.FC = () => {
     model: OnichanModelInfo,
     isSelected: boolean,
     onLoad: () => void,
-    onUnload: () => void
+    onUnload: () => void,
   ) => {
     const isDownloading = downloadProgress[model.id] !== undefined;
     const progress = downloadProgress[model.id] || 0;
@@ -476,7 +488,8 @@ export const OnichanSettings: React.FC = () => {
             <p className="text-xs text-text/60 mt-1">{model.description}</p>
             <p className="text-xs text-text/40 mt-1">
               {model.size_mb} MB
-              {model.context_size && ` • ${model.context_size.toLocaleString()} ctx`}
+              {model.context_size &&
+                ` • ${model.context_size.toLocaleString()} ctx`}
               {model.voice_name && ` • ${model.voice_name}`}
             </p>
             {/* Hint for available models */}
@@ -633,11 +646,15 @@ export const OnichanSettings: React.FC = () => {
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <Timer className="w-4 h-4 text-text/60" />
-                <span className="text-sm">{t("onichan.silenceThreshold.label")}</span>
+                <span className="text-sm">
+                  {t("onichan.silenceThreshold.label")}
+                </span>
               </div>
               <span className="text-sm text-text/60">
                 {t("onichan.silenceThreshold.value", {
-                  value: ((settings?.onichan_silence_threshold ?? 1500) / 1000).toFixed(1),
+                  value: (
+                    (settings?.onichan_silence_threshold ?? 1500) / 1000
+                  ).toFixed(1),
                 })}
               </span>
             </div>
@@ -698,29 +715,32 @@ export const OnichanSettings: React.FC = () => {
           )}
 
           {/* Live Transcription Display */}
-          {isEnabled && (isRecording || isTranscribing || liveTranscription) && (
-            <div className="mt-4 p-3 bg-background-dark/30 rounded-lg">
-              <div className="flex items-center gap-2 mb-2">
-                <Mic className="w-4 h-4 text-logo-primary" />
-                <span className="text-xs text-text/60 uppercase tracking-wide">
-                  {t("onichan.liveTranscription")}
-                </span>
-                {(isRecording || isTranscribing) && (
-                  <span className="flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-logo-primary opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-logo-primary"></span>
+          {isEnabled &&
+            (isRecording || isTranscribing || liveTranscription) && (
+              <div className="mt-4 p-3 bg-background-dark/30 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <Mic className="w-4 h-4 text-logo-primary" />
+                  <span className="text-xs text-text/60 uppercase tracking-wide">
+                    {t("onichan.liveTranscription")}
                   </span>
-                )}
+                  {(isRecording || isTranscribing) && (
+                    <span className="flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-logo-primary opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-logo-primary"></span>
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-text min-h-[1.5rem]">
+                  {liveTranscription || (
+                    <span className="text-text/40 italic">
+                      {isRecording
+                        ? t("onichan.listeningPlaceholder")
+                        : t("onichan.processingPlaceholder")}
+                    </span>
+                  )}
+                </p>
               </div>
-              <p className="text-sm text-text min-h-[1.5rem]">
-                {liveTranscription || (
-                  <span className="text-text/40 italic">
-                    {isRecording ? t("onichan.listeningPlaceholder") : t("onichan.processingPlaceholder")}
-                  </span>
-                )}
-              </p>
-            </div>
-          )}
+            )}
 
           {/* Instructions */}
           {isEnabled && status === "idle" && !liveTranscription && (
@@ -761,8 +781,8 @@ export const OnichanSettings: React.FC = () => {
                 model,
                 selectedLlmId === model.id && isLlmLoaded,
                 () => handleLoadLlm(model.id),
-                handleUnloadLlm
-              )
+                handleUnloadLlm,
+              ),
             )}
           </div>
         </div>
@@ -783,8 +803,8 @@ export const OnichanSettings: React.FC = () => {
                 model,
                 selectedTtsId === model.id && isTtsLoaded,
                 () => handleLoadTts(model.id),
-                handleUnloadTts
-              )
+                handleUnloadTts,
+              ),
             )}
           </div>
           <p className="text-xs text-text/40 mt-3">

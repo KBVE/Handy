@@ -55,12 +55,17 @@ export const DependencyStatus: React.FC<DependencyStatusProps> = ({
           <div className="mt-1 text-sm text-mid-gray">
             <div className="flex items-center gap-2">
               <span>{t("devops.dependencies.version")}:</span>
-              <code className="text-green-400">{status.version || t("devops.dependencies.unknown")}</code>
+              <code className="text-green-400">
+                {status.version || t("devops.dependencies.unknown")}
+              </code>
             </div>
             {status.path && (
               <div className="flex items-center gap-2 mt-0.5">
                 <span>{t("devops.dependencies.path")}:</span>
-                <code className="text-xs truncate max-w-[200px]" title={status.path}>
+                <code
+                  className="text-xs truncate max-w-[200px]"
+                  title={status.path}
+                >
                   {status.path}
                 </code>
               </div>
@@ -98,11 +103,17 @@ export const DependencyStatus: React.FC<DependencyStatusProps> = ({
                 ? "bg-logo-primary"
                 : "bg-mid-gray/30"
             } ${toggleDisabled || !status.installed ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-            title={!status.installed ? t("devops.dependencies.installFirst") : undefined}
+            title={
+              !status.installed
+                ? t("devops.dependencies.installFirst")
+                : undefined
+            }
           >
             <span
               className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                isEnabled && status.installed ? "translate-x-6" : "translate-x-1"
+                isEnabled && status.installed
+                  ? "translate-x-6"
+                  : "translate-x-1"
               }`}
             />
           </button>

@@ -16,8 +16,8 @@ interface FillerOutputModeSelectorProps {
   grouped?: boolean;
 }
 
-export const FillerOutputModeSelector: React.FC<FillerOutputModeSelectorProps> = React.memo(
-  ({ descriptionMode = "tooltip", grouped = false }) => {
+export const FillerOutputModeSelector: React.FC<FillerOutputModeSelectorProps> =
+  React.memo(({ descriptionMode = "tooltip", grouped = false }) => {
     const { t } = useTranslation();
     const { getSetting, updateSetting, isUpdating } = useSettings();
 
@@ -49,5 +49,4 @@ export const FillerOutputModeSelector: React.FC<FillerOutputModeSelectorProps> =
         </select>
       </SettingContainer>
     );
-  },
-);
+  });

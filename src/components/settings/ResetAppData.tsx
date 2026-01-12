@@ -67,9 +67,7 @@ export const ResetAppData: React.FC<ResetAppDataProps> = ({
           <p className="text-sm text-text/70">
             {t("settings.advanced.resetApp.confirmDescription")}
           </p>
-          {error && (
-            <p className="text-sm text-red-400">{error}</p>
-          )}
+          {error && <p className="text-sm text-red-400">{error}</p>}
           <div className="flex gap-2 justify-end">
             <Button
               variant="secondary"

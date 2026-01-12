@@ -168,7 +168,12 @@ fn check_ollama() -> DependencyStatus {
     // Parse version from ollama output
     let version = version.and_then(|v| {
         v.split_whitespace()
-            .find(|s| s.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false))
+            .find(|s| {
+                s.chars()
+                    .next()
+                    .map(|c| c.is_ascii_digit())
+                    .unwrap_or(false)
+            })
             .map(|s| s.to_string())
     });
 

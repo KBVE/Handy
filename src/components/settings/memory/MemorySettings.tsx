@@ -1,6 +1,12 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { commands, MemoryMessage, MemoryStatus, EmbeddingModelInfo, MemoryUserInfo } from "@/bindings";
+import {
+  commands,
+  MemoryMessage,
+  MemoryStatus,
+  EmbeddingModelInfo,
+  MemoryUserInfo,
+} from "@/bindings";
 import { SettingsGroup } from "../../ui/SettingsGroup";
 import { useSidecarStore } from "@/stores/sidecarStore";
 import {
@@ -49,8 +55,12 @@ export const MemorySettings: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   // Embedding model state
-  const [embeddingModels, setEmbeddingModels] = useState<EmbeddingModelInfo[]>([]);
-  const [currentModel, setCurrentModel] = useState<EmbeddingModelInfo | null>(null);
+  const [embeddingModels, setEmbeddingModels] = useState<EmbeddingModelInfo[]>(
+    [],
+  );
+  const [currentModel, setCurrentModel] = useState<EmbeddingModelInfo | null>(
+    null,
+  );
   const [isLoadingModel, setIsLoadingModel] = useState<string | null>(null);
   const [isStartingSidecar, setIsStartingSidecar] = useState(false);
   const [isStoppingSidecar, setIsStoppingSidecar] = useState(false);
@@ -69,8 +79,12 @@ export const MemorySettings: React.FC = () => {
     if (status) {
       setStatus((prev) =>
         prev
-          ? { ...prev, is_running: memoryRunning, model_loaded: memoryModelLoaded }
-          : prev
+          ? {
+              ...prev,
+              is_running: memoryRunning,
+              model_loaded: memoryModelLoaded,
+            }
+          : prev,
       );
     }
   }, [memoryRunning, memoryModelLoaded, status]);
@@ -163,7 +177,7 @@ export const MemorySettings: React.FC = () => {
       const result = await commands.browseRecentMemories(
         browseLimit,
         selectedUser,
-        isBotFilter
+        isBotFilter,
       );
       if (result.status === "ok") {
         setSearchResults(result.data);
@@ -264,7 +278,11 @@ export const MemorySettings: React.FC = () => {
     try {
       const result = await commands.stopMemorySidecar();
       if (result.status === "ok") {
-        setStatus({ is_running: false, model_loaded: false, total_memories: 0 });
+        setStatus({
+          is_running: false,
+          model_loaded: false,
+          total_memories: 0,
+        });
         setEmbeddingModels([]);
         setCurrentModel(null);
         setUsers([]);
@@ -277,23 +295,26 @@ export const MemorySettings: React.FC = () => {
     }
   }, [refreshSidecarState]);
 
-  const handleLoadModel = useCallback(async (modelId: string) => {
-    setIsLoadingModel(modelId);
-    try {
-      const result = await commands.loadEmbeddingModel(modelId);
-      if (result.status === "ok") {
-        // Refresh model list to update is_loaded status
-        await loadEmbeddingModels();
-        refreshSidecarState();
-      } else {
-        console.error("Failed to load model:", result.error);
+  const handleLoadModel = useCallback(
+    async (modelId: string) => {
+      setIsLoadingModel(modelId);
+      try {
+        const result = await commands.loadEmbeddingModel(modelId);
+        if (result.status === "ok") {
+          // Refresh model list to update is_loaded status
+          await loadEmbeddingModels();
+          refreshSidecarState();
+        } else {
+          console.error("Failed to load model:", result.error);
+        }
+      } catch (e) {
+        console.error("Failed to load model:", e);
+      } finally {
+        setIsLoadingModel(null);
       }
-    } catch (e) {
-      console.error("Failed to load model:", e);
-    } finally {
-      setIsLoadingModel(null);
-    }
-  }, [loadEmbeddingModels, refreshSidecarState]);
+    },
+    [loadEmbeddingModels, refreshSidecarState],
+  );
 
   const handleLoadMore = useCallback(async () => {
     setBrowseLimit((prev) => prev + 20);
@@ -311,9 +332,15 @@ export const MemorySettings: React.FC = () => {
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
     if (diffDays === 0) {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return date.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
     } else if (diffDays === 1) {
-      return "Yesterday " + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return (
+        "Yesterday " +
+        date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      );
     } else if (diffDays < 7) {
       return `${diffDays}d ago`;
     } else {
@@ -431,9 +458,7 @@ export const MemorySettings: React.FC = () => {
           </div>
 
           {/* Info message */}
-          <p className="text-xs text-text/50 mt-4">
-            {t("memory.status.info")}
-          </p>
+          <p className="text-xs text-text/50 mt-4">{t("memory.status.info")}</p>
         </div>
       </SettingsGroup>
 
@@ -464,12 +489,18 @@ export const MemorySettings: React.FC = () => {
                 <div
                   key={model.id}
                   className={`p-3 rounded-lg transition-all ${cardStyles}`}
-                  onClick={isAvailable && !isLoading ? () => handleLoadModel(model.id) : undefined}
+                  onClick={
+                    isAvailable && !isLoading
+                      ? () => handleLoadModel(model.id)
+                      : undefined
+                  }
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h4 className="font-medium text-sm truncate">{model.name}</h4>
+                        <h4 className="font-medium text-sm truncate">
+                          {model.name}
+                        </h4>
                         {/* Status Badge */}
                         {isActive && (
                           <span className="px-2 py-0.5 text-xs font-semibold bg-logo-primary text-background rounded-full flex items-center gap-1">
@@ -494,9 +525,14 @@ export const MemorySettings: React.FC = () => {
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-text/60 mt-1">{model.description}</p>
+                      <p className="text-xs text-text/60 mt-1">
+                        {model.description}
+                      </p>
                       <p className="text-xs text-text/40 mt-1">
-                        {t("memory.model.sizeAndDim", { size: model.size_mb, dim: model.dimension })}
+                        {t("memory.model.sizeAndDim", {
+                          size: model.size_mb,
+                          dim: model.dimension,
+                        })}
                       </p>
                       {/* Hint for available models */}
                       {isAvailable && !isLoading && (
@@ -529,9 +565,7 @@ export const MemorySettings: React.FC = () => {
               {t("memory.model.loadFirst")}
             </p>
           )}
-          <p className="text-xs text-text/40 mt-3">
-            {t("memory.model.note")}
-          </p>
+          <p className="text-xs text-text/40 mt-3">{t("memory.model.note")}</p>
         </div>
       </SettingsGroup>
 
@@ -587,7 +621,9 @@ export const MemorySettings: React.FC = () => {
             <div className="flex flex-wrap gap-3 mb-4 p-3 bg-background-dark/30 rounded-lg">
               {/* User filter */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs text-text/50">{t("memory.browser.filterByUser")}</label>
+                <label className="text-xs text-text/50">
+                  {t("memory.browser.filterByUser")}
+                </label>
                 <div className="relative">
                   <select
                     value={selectedUser || ""}
@@ -597,7 +633,10 @@ export const MemorySettings: React.FC = () => {
                     <option value="">{t("memory.browser.allUsers")}</option>
                     {users.map((user) => (
                       <option key={user.user_id} value={user.user_id}>
-                        {t("memory.browser.userOption", { id: user.user_id.slice(0, 8), count: user.memory_count })}
+                        {t("memory.browser.userOption", {
+                          id: user.user_id.slice(0, 8),
+                          count: user.memory_count,
+                        })}
                       </option>
                     ))}
                   </select>
@@ -607,16 +646,24 @@ export const MemorySettings: React.FC = () => {
 
               {/* Type filter */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs text-text/50">{t("memory.browser.filterByType")}</label>
+                <label className="text-xs text-text/50">
+                  {t("memory.browser.filterByType")}
+                </label>
                 <div className="relative">
                   <select
                     value={typeFilter}
-                    onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
+                    onChange={(e) =>
+                      setTypeFilter(e.target.value as TypeFilter)
+                    }
                     className="appearance-none bg-background-dark/50 border border-background-dark rounded-lg px-3 py-1.5 pr-8 text-sm text-text focus:outline-none focus:border-logo-primary/50"
                   >
                     <option value="all">{t("memory.browser.allTypes")}</option>
-                    <option value="user">{t("memory.browser.userMessages")}</option>
-                    <option value="bot">{t("memory.browser.botResponses")}</option>
+                    <option value="user">
+                      {t("memory.browser.userMessages")}
+                    </option>
+                    <option value="bot">
+                      {t("memory.browser.botResponses")}
+                    </option>
                   </select>
                   <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-text/40 pointer-events-none" />
                 </div>
@@ -656,7 +703,10 @@ export const MemorySettings: React.FC = () => {
           {/* Results count */}
           {searchResults.length > 0 && (
             <div className="text-xs text-text/50 mb-2">
-              {t("memory.browser.showingCount", { count: searchResults.length, total: totalResults })}
+              {t("memory.browser.showingCount", {
+                count: searchResults.length,
+                total: totalResults,
+              })}
             </div>
           )}
 
@@ -695,7 +745,9 @@ export const MemorySettings: React.FC = () => {
                         {memory.similarity && (
                           <>
                             <span className="select-none">|</span>
-                            <span className={`${memory.similarity > 0.7 ? 'text-green-400' : memory.similarity > 0.5 ? 'text-yellow-400' : 'text-text/40'}`}>
+                            <span
+                              className={`${memory.similarity > 0.7 ? "text-green-400" : memory.similarity > 0.5 ? "text-yellow-400" : "text-text/40"}`}
+                            >
                               {t("memory.browser.similarity", {
                                 percent: (memory.similarity * 100).toFixed(0),
                               })}
@@ -726,7 +778,9 @@ export const MemorySettings: React.FC = () => {
             <p className="text-center text-text/40 py-8">
               {t("memory.browser.searchHint")}
             </p>
-          ) : viewMode === "chronological" && !isSearching && searchResults.length === 0 ? (
+          ) : viewMode === "chronological" &&
+            !isSearching &&
+            searchResults.length === 0 ? (
             <p className="text-center text-text/40 py-8">
               {t("memory.browser.browseRecentHint")}
             </p>

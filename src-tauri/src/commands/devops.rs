@@ -6,7 +6,9 @@ use crate::devops::{
         self, GhAuthStatus, GitHubComment, GitHubIssue, GitHubPullRequest, IssueAgentMetadata,
         IssueWithAgent, PrStatus,
     },
-    orchestrator::{self, AgentStatus, CompleteWorkResult, SpawnConfig, SpawnResult, WorkflowConfig},
+    orchestrator::{
+        self, AgentStatus, CompleteWorkResult, SpawnConfig, SpawnResult, WorkflowConfig,
+    },
     tmux::{self, AgentMetadata, RecoveredSession, TmuxSession},
     worktree::{self, CollisionCheck, WorktreeConfig, WorktreeCreateResult, WorktreeInfo},
     DevOpsDependencies,
@@ -216,7 +218,9 @@ pub fn list_github_issues(
     limit: Option<u32>,
 ) -> Result<Vec<GitHubIssue>, String> {
     let state_ref = state.as_deref();
-    let labels_ref: Option<Vec<&str>> = labels.as_ref().map(|v| v.iter().map(|s| s.as_str()).collect());
+    let labels_ref: Option<Vec<&str>> = labels
+        .as_ref()
+        .map(|v| v.iter().map(|s| s.as_str()).collect());
     github::list_issues(&repo, state_ref, labels_ref, limit)
 }
 
@@ -244,7 +248,9 @@ pub fn create_github_issue(
     labels: Option<Vec<String>>,
 ) -> Result<GitHubIssue, String> {
     let body_ref = body.as_deref();
-    let labels_ref: Option<Vec<&str>> = labels.as_ref().map(|v| v.iter().map(|s| s.as_str()).collect());
+    let labels_ref: Option<Vec<&str>> = labels
+        .as_ref()
+        .map(|v| v.iter().map(|s| s.as_str()).collect());
     github::create_issue(&repo, &title, body_ref, labels_ref)
 }
 
@@ -302,7 +308,11 @@ pub fn update_github_issue_labels(
 /// Close a GitHub issue.
 #[tauri::command]
 #[specta::specta]
-pub fn close_github_issue(repo: String, number: u64, comment: Option<String>) -> Result<(), String> {
+pub fn close_github_issue(
+    repo: String,
+    number: u64,
+    comment: Option<String>,
+) -> Result<(), String> {
     github::close_issue(&repo, number, comment.as_deref())
 }
 
@@ -497,7 +507,11 @@ pub fn list_remote_agent_statuses() -> Result<Vec<AgentStatus>, String> {
 /// Toggle an agent type on/off.
 #[tauri::command]
 #[specta::specta]
-pub fn toggle_agent_enabled(app: AppHandle, agent_type: String, enabled: bool) -> Result<Vec<String>, String> {
+pub fn toggle_agent_enabled(
+    app: AppHandle,
+    agent_type: String,
+    enabled: bool,
+) -> Result<Vec<String>, String> {
     let mut app_settings = settings::get_settings(&app);
 
     if enabled {

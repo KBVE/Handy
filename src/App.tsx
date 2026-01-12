@@ -53,7 +53,9 @@ function App() {
   // Check for stored auth mode on startup
   const checkAuthStatus = async () => {
     try {
-      const storedAuthMode = localStorage.getItem("auth_mode") as AuthMode | null;
+      const storedAuthMode = localStorage.getItem(
+        "auth_mode",
+      ) as AuthMode | null;
 
       // If they previously chose "signed_in", verify they're still authenticated
       if (storedAuthMode === "signed_in") {

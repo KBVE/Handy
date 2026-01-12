@@ -397,8 +397,8 @@ pub fn add_agent_metadata_comment(
     number: u64,
     metadata: &IssueAgentMetadata,
 ) -> Result<(), String> {
-    let metadata_json =
-        serde_json::to_string(metadata).map_err(|e| format!("Failed to serialize metadata: {}", e))?;
+    let metadata_json = serde_json::to_string(metadata)
+        .map_err(|e| format!("Failed to serialize metadata: {}", e))?;
 
     let body = format!(
         r#"{}
@@ -511,7 +511,12 @@ pub fn get_issue_with_agent(repo: &str, number: u64) -> Result<IssueWithAgent, S
 }
 
 /// Update issue labels.
-pub fn update_labels(repo: &str, number: u64, add: Vec<&str>, remove: Vec<&str>) -> Result<(), String> {
+pub fn update_labels(
+    repo: &str,
+    number: u64,
+    add: Vec<&str>,
+    remove: Vec<&str>,
+) -> Result<(), String> {
     // Add labels
     if !add.is_empty() {
         let add_str = add.join(",");
@@ -571,13 +576,7 @@ pub fn close_issue(repo: &str, number: u64, comment: Option<&str>) -> Result<(),
     }
 
     let output = Command::new("gh")
-        .args([
-            "issue",
-            "close",
-            &number.to_string(),
-            "--repo",
-            repo,
-        ])
+        .args(["issue", "close", &number.to_string(), "--repo", repo])
         .output()
         .map_err(|e| format!("Failed to execute gh: {}", e))?;
 
@@ -594,13 +593,7 @@ pub fn close_issue(repo: &str, number: u64, comment: Option<&str>) -> Result<(),
 /// Reopen a closed issue.
 pub fn reopen_issue(repo: &str, number: u64) -> Result<(), String> {
     let output = Command::new("gh")
-        .args([
-            "issue",
-            "reopen",
-            &number.to_string(),
-            "--repo",
-            repo,
-        ])
+        .args(["issue", "reopen", &number.to_string(), "--repo", repo])
         .output()
         .map_err(|e| format!("Failed to execute gh: {}", e))?;
 
@@ -881,7 +874,9 @@ pub fn create_pr(
     head: Option<&str>,
     draft: bool,
 ) -> Result<GitHubPullRequest, String> {
-    let mut args = vec!["pr", "create", "--repo", repo, "--title", title, "--base", base];
+    let mut args = vec![
+        "pr", "create", "--repo", repo, "--title", title, "--base", base,
+    ];
 
     let body_str;
     if let Some(b) = body {
@@ -1058,7 +1053,11 @@ pub fn get_pr_status(repo: &str, number: u64) -> Result<PrStatus, String> {
     let checks = get_pr_checks(repo, number)?;
     let reviews = get_pr_reviews(repo, number)?;
 
-    Ok(PrStatus { pr, checks, reviews })
+    Ok(PrStatus {
+        pr,
+        checks,
+        reviews,
+    })
 }
 
 /// Merge a pull request.
@@ -1101,7 +1100,15 @@ pub fn close_pr(repo: &str, number: u64, comment: Option<&str>) -> Result<(), St
     if let Some(c) = comment {
         // Add comment first
         let comment_output = Command::new("gh")
-            .args(["pr", "comment", &number.to_string(), "--repo", repo, "--body", c])
+            .args([
+                "pr",
+                "comment",
+                &number.to_string(),
+                "--repo",
+                repo,
+                "--body",
+                c,
+            ])
             .output()
             .map_err(|e| format!("Failed to execute gh: {}", e))?;
 

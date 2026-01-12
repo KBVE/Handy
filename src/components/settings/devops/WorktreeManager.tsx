@@ -89,7 +89,10 @@ export const WorktreeManager: React.FC<WorktreeManagerProps> = ({
     loadWorktrees();
   }, [loadWorktrees]);
 
-  const handleRemoveWorktree = async (worktreePath: string, branch?: string) => {
+  const handleRemoveWorktree = async (
+    worktreePath: string,
+    branch?: string,
+  ) => {
     if (!currentRepoPath) return;
 
     setRemovingWorktree(worktreePath);
@@ -98,7 +101,7 @@ export const WorktreeManager: React.FC<WorktreeManagerProps> = ({
         currentRepoPath,
         worktreePath,
         false, // force
-        branch ? true : false // delete branch if it exists
+        branch ? true : false, // delete branch if it exists
       );
       await loadWorktrees();
       onWorktreeChange?.();
@@ -121,7 +124,7 @@ export const WorktreeManager: React.FC<WorktreeManagerProps> = ({
         newWorktreeName.trim(),
         null, // prefix (use default)
         null, // base_path (use default)
-        null // base_branch (use default)
+        null, // base_branch (use default)
       );
       await loadWorktrees();
       onWorktreeChange?.();
@@ -192,7 +195,9 @@ export const WorktreeManager: React.FC<WorktreeManagerProps> = ({
             className="p-1 hover:bg-mid-gray/20 rounded transition-colors"
             title={t("devops.refresh")}
           >
-            <RefreshCcw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
+            <RefreshCcw
+              className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`}
+            />
           </button>
         </div>
       </div>
@@ -323,7 +328,12 @@ export const WorktreeManager: React.FC<WorktreeManagerProps> = ({
               {!worktree.is_main && (
                 <div className="flex items-center gap-1">
                   <button
-                    onClick={() => handleRemoveWorktree(worktree.path, worktree.branch ?? undefined)}
+                    onClick={() =>
+                      handleRemoveWorktree(
+                        worktree.path,
+                        worktree.branch ?? undefined,
+                      )
+                    }
                     disabled={removingWorktree === worktree.path}
                     className="p-1.5 hover:bg-red-500/20 rounded transition-colors text-red-400"
                     title={t("devops.worktrees.remove")}

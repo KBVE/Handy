@@ -327,6 +327,7 @@ impl Drop for AuthServer {
 ```
 
 **Modify: `src-tauri/Cargo.toml`**
+
 ```toml
 [dependencies]
 urlencoding = "2"
@@ -485,11 +486,13 @@ pub fn auth_is_authenticated(app: AppHandle) -> bool {
 ```
 
 **Modify: `src-tauri/src/commands/mod.rs`**
+
 ```rust
 pub mod auth;
 ```
 
 **Modify: `src-tauri/src/lib.rs`**
+
 ```rust
 mod auth_server;
 
@@ -510,13 +513,15 @@ commands::auth::auth_is_authenticated,
 ### Phase 3: Frontend Supabase Integration
 
 **Install Dependencies:**
+
 ```bash
 bun add @supabase/supabase-js
 ```
 
 **New file: `src/lib/supabase.ts`**
+
 ```typescript
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -547,12 +552,13 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 ```
 
 **New file: `src/hooks/useAuth.ts`**
+
 ```typescript
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { listen } from '@tauri-apps/api/event';
-import { open } from '@tauri-apps/plugin-shell';
-import { supabase } from '@/lib/supabase';
-import { commands } from '@/bindings';
+import { useState, useEffect, useCallback, useRef } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { open } from "@tauri-apps/plugin-shell";
+import { supabase } from "@/lib/supabase";
+import { commands } from "@/bindings";
 
 interface AuthState {
   isAuthenticated: boolean;
@@ -579,7 +585,9 @@ export function useAuth() {
       setState({
         isAuthenticated: user.is_authenticated,
         isLoading: false,
-        user: user.is_authenticated ? { id: user.id, email: user.email ?? undefined } : null,
+        user: user.is_authenticated
+          ? { id: user.id, email: user.email ?? undefined }
+          : null,
         error: null,
       });
     };
@@ -588,13 +596,14 @@ export function useAuth() {
 
   // Listen for auth callbacks from local server
   useEffect(() => {
-    const unlisten = listen<string>('auth://callback', async (event) => {
+    const unlisten = listen<string>("auth://callback", async (event) => {
       const code = event.payload; // Server sends just the code directly
 
       if (code && isAuthenticating.current) {
         try {
           // Exchange code for session using PKCE
-          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+          const { data, error } =
+            await supabase.auth.exchangeCodeForSession(code);
           if (error) throw error;
 
           if (data.session) {
@@ -612,13 +621,13 @@ export function useAuth() {
               isLoading: false,
               user: {
                 id: data.session.user.id,
-                email: data.session.user.email ?? undefined
+                email: data.session.user.email ?? undefined,
               },
               error: null,
             });
           }
         } catch (e) {
-          setState(prev => ({ ...prev, error: String(e), isLoading: false }));
+          setState((prev) => ({ ...prev, error: String(e), isLoading: false }));
         } finally {
           isAuthenticating.current = false;
           // Stop the auth server
@@ -628,55 +637,58 @@ export function useAuth() {
     });
 
     // Also listen for auth errors
-    const unlistenError = listen<string>('auth://error', async (event) => {
-      setState(prev => ({ ...prev, error: event.payload, isLoading: false }));
+    const unlistenError = listen<string>("auth://error", async (event) => {
+      setState((prev) => ({ ...prev, error: event.payload, isLoading: false }));
       isAuthenticating.current = false;
       await commands.authStopServer();
     });
 
     return () => {
-      unlisten.then(fn => fn());
-      unlistenError.then(fn => fn());
+      unlisten.then((fn) => fn());
+      unlistenError.then((fn) => fn());
     };
   }, []);
 
   // Sign in with OAuth provider
-  const signIn = useCallback(async (provider: 'google' | 'discord' | 'github') => {
-    setState(prev => ({ ...prev, isLoading: true, error: null }));
-    isAuthenticating.current = true;
+  const signIn = useCallback(
+    async (provider: "google" | "discord" | "github") => {
+      setState((prev) => ({ ...prev, isLoading: true, error: null }));
+      isAuthenticating.current = true;
 
-    try {
-      // 1. Start the local callback server and get the callback URL
-      const callbackUrl = await commands.authStartServer();
+      try {
+        // 1. Start the local callback server and get the callback URL
+        const callbackUrl = await commands.authStartServer();
 
-      // 2. Generate OAuth URL with the dynamic callback
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: {
-          redirectTo: callbackUrl,
-          skipBrowserRedirect: true, // We'll open manually
-        },
-      });
+        // 2. Generate OAuth URL with the dynamic callback
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider,
+          options: {
+            redirectTo: callbackUrl,
+            skipBrowserRedirect: true, // We'll open manually
+          },
+        });
 
-      if (error) throw error;
+        if (error) throw error;
 
-      // 3. Open OAuth URL in system browser
-      if (data.url) {
-        await open(data.url);
+        // 3. Open OAuth URL in system browser
+        if (data.url) {
+          await open(data.url);
+        }
+      } catch (e) {
+        setState((prev) => ({ ...prev, error: String(e), isLoading: false }));
+        isAuthenticating.current = false;
+        // Clean up server on error
+        await commands.authStopServer();
       }
-    } catch (e) {
-      setState(prev => ({ ...prev, error: String(e), isLoading: false }));
-      isAuthenticating.current = false;
-      // Clean up server on error
-      await commands.authStopServer();
-    }
-  }, []);
+    },
+    [],
+  );
 
   // Cancel ongoing auth flow
   const cancelAuth = useCallback(async () => {
     isAuthenticating.current = false;
     await commands.authStopServer();
-    setState(prev => ({ ...prev, isLoading: false }));
+    setState((prev) => ({ ...prev, isLoading: false }));
   }, []);
 
   // Sign out
@@ -703,6 +715,7 @@ export function useAuth() {
 ### Phase 4: Auth UI Components
 
 **New file: `src/components/auth/AuthButton.tsx`**
+
 ```typescript
 import { useAuth } from '@/hooks/useAuth';
 import { useTranslation } from 'react-i18next';
@@ -743,6 +756,7 @@ export function AuthButton() {
 ```
 
 **Modify: `src/i18n/locales/en/translation.json`**
+
 ```json
 {
   "auth": {
@@ -760,12 +774,14 @@ export function AuthButton() {
 ### Phase 5: Environment Configuration
 
 **New file: `.env.example`**
+
 ```env
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key-here
 ```
 
 **Add to `.gitignore`:**
+
 ```
 .env
 .env.local
@@ -807,18 +823,18 @@ VITE_SUPABASE_ANON_KEY=your-anon-key-here
 
 ## Critical Files Summary
 
-| File | Changes |
-|------|---------|
-| `src-tauri/Cargo.toml` | Add `urlencoding = "2"` |
-| `src-tauri/src/auth_server.rs` | NEW - Local HTTP callback server |
-| `src-tauri/src/commands/auth.rs` | NEW - Auth commands + AuthManager |
-| `src-tauri/src/commands/mod.rs` | Export auth module |
-| `src-tauri/src/lib.rs` | Register auth_server module + auth commands + AuthManager state |
-| `src/lib/supabase.ts` | NEW - Supabase client config |
-| `src/hooks/useAuth.ts` | NEW - Auth hook with server lifecycle |
-| `src/components/auth/AuthButton.tsx` | NEW - Auth UI component |
-| `src/i18n/locales/en/translation.json` | Add auth translations |
-| `.env.example` | NEW - Environment template |
+| File                                   | Changes                                                         |
+| -------------------------------------- | --------------------------------------------------------------- |
+| `src-tauri/Cargo.toml`                 | Add `urlencoding = "2"`                                         |
+| `src-tauri/src/auth_server.rs`         | NEW - Local HTTP callback server                                |
+| `src-tauri/src/commands/auth.rs`       | NEW - Auth commands + AuthManager                               |
+| `src-tauri/src/commands/mod.rs`        | Export auth module                                              |
+| `src-tauri/src/lib.rs`                 | Register auth_server module + auth commands + AuthManager state |
+| `src/lib/supabase.ts`                  | NEW - Supabase client config                                    |
+| `src/hooks/useAuth.ts`                 | NEW - Auth hook with server lifecycle                           |
+| `src/components/auth/AuthButton.tsx`   | NEW - Auth UI component                                         |
+| `src/i18n/locales/en/translation.json` | Add auth translations                                           |
+| `.env.example`                         | NEW - Environment template                                      |
 
 ---
 

@@ -7,6 +7,7 @@ Add vector database for per-user conversation memory with 30-day TTL expiration.
 **Goal**: Enable the Discord voice bot to remember conversations with users long-term using semantic search.
 
 **User Preferences**:
+
 - Memory scope: **Per User** (memory follows users across servers)
 - Retention: **Unlimited with 30-day TTL** (auto-expire old messages)
 
@@ -17,6 +18,7 @@ Add vector database for per-user conversation memory with 30-day TTL expiration.
 ### New Sidecar: `memory-sidecar`
 
 Following the existing sidecar pattern (llm-sidecar, tts-sidecar, discord-sidecar), create a new memory service that handles:
+
 1. **Embedding generation** - Convert text to 384-dim vectors using all-MiniLM-L6-v2
 2. **Vector storage** - LanceDB for embedded, serverless vector search
 3. **Semantic retrieval** - Find relevant past conversations by similarity
@@ -54,6 +56,7 @@ src-tauri/
 ### Phase 1: Memory Sidecar Foundation
 
 **New file: `src-tauri/memory-sidecar/Cargo.toml`**
+
 ```toml
 [package]
 name = "memory-sidecar"
@@ -85,11 +88,13 @@ anyhow = "1"
 ```
 
 **New file: `src-tauri/memory-sidecar/src/embeddings.rs`**
+
 - Load all-MiniLM-L6-v2 ONNX model from HuggingFace Hub
 - Cache model to `~/.cache/huggingface/` or app data dir
 - Generate 384-dim embeddings for text
 
 **New file: `src-tauri/memory-sidecar/src/vector_store.rs`**
+
 - Initialize LanceDB in app data dir (`onichan_memory/`)
 - Table schema: `id, user_id, content, embedding, is_bot, timestamp`
 - Store messages with embeddings
@@ -97,6 +102,7 @@ anyhow = "1"
 - TTL cleanup (delete where timestamp < now - 30 days)
 
 **New file: `src-tauri/memory-sidecar/src/main.rs`**
+
 - JSON IPC over stdin/stdout (same pattern as llm-sidecar)
 - Handle store/query/cleanup/shutdown commands
 - Initialize embedding model + vector store on startup
@@ -104,6 +110,7 @@ anyhow = "1"
 ### Phase 2: Main App Integration
 
 **New file: `src-tauri/src/memory.rs`**
+
 ```rust
 pub struct MemoryManager {
     process: Option<Child>,
@@ -120,11 +127,13 @@ impl MemoryManager {
 ```
 
 **Modify: `src-tauri/src/lib.rs`**
+
 - Add `mod memory;`
 - Initialize MemoryManager in `run()` function
 - Register as Tauri state
 
 **Modify: `src-tauri/src/onichan.rs`**
+
 ```rust
 pub struct OnichanManager {
     // ... existing fields ...
@@ -147,6 +156,7 @@ memory_manager.store_message(&user_id, &response, true)?;
 ```
 
 **Modify: `src-tauri/src/discord_conversation.rs`**
+
 - Pass user_id from Discord to onichan for memory association
 - Store messages after successful processing
 
@@ -154,6 +164,7 @@ memory_manager.store_message(&user_id, &response, true)?;
 
 **Modify: `src-tauri/tauri.conf.json`**
 Add memory-sidecar to externalBin:
+
 ```json
 "bundle": {
   "externalBin": [
@@ -170,6 +181,7 @@ Add memory-sidecar to externalBin:
 ### Phase 4: Periodic Cleanup
 
 **Modify: `src-tauri/src/lib.rs`**
+
 - Spawn background task on app startup
 - Run `cleanup_expired(30)` every 24 hours
 - Clean up on app shutdown
@@ -194,6 +206,7 @@ struct MemoryEntry {
 ## Embedding Model
 
 **Model**: `sentence-transformers/all-MiniLM-L6-v2`
+
 - Size: ~22M parameters (~90MB on disk)
 - Dimensions: 384
 - Latency: ~15-50ms per message
@@ -205,14 +218,14 @@ struct MemoryEntry {
 
 ## Critical Files Summary
 
-| File | Changes |
-|------|---------|
-| `src-tauri/memory-sidecar/` | NEW - Entire sidecar directory |
-| `src-tauri/src/memory.rs` | NEW - Memory manager wrapper |
-| `src-tauri/src/lib.rs` | Add memory module, initialize manager |
-| `src-tauri/src/onichan.rs` | Integrate memory queries + storage |
-| `src-tauri/src/discord_conversation.rs` | Pass user_id for memory association |
-| `src-tauri/tauri.conf.json` | Add memory-sidecar to externalBin |
+| File                                    | Changes                               |
+| --------------------------------------- | ------------------------------------- |
+| `src-tauri/memory-sidecar/`             | NEW - Entire sidecar directory        |
+| `src-tauri/src/memory.rs`               | NEW - Memory manager wrapper          |
+| `src-tauri/src/lib.rs`                  | Add memory module, initialize manager |
+| `src-tauri/src/onichan.rs`              | Integrate memory queries + storage    |
+| `src-tauri/src/discord_conversation.rs` | Pass user_id for memory association   |
+| `src-tauri/tauri.conf.json`             | Add memory-sidecar to externalBin     |
 
 ---
 

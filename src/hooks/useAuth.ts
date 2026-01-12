@@ -16,7 +16,7 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
       atob(base64)
         .split("")
         .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
-        .join("")
+        .join(""),
     );
     return JSON.parse(jsonPayload);
   } catch {
@@ -80,95 +80,109 @@ export function useAuth() {
       // Listen for implicit flow tokens (auth://token)
       // Supabase returns tokens in URL fragment (#access_token=...)
       // Our auth server extracts them and POSTs to /auth/token, then emits this event
-      const unlistenToken = await listen<string>("auth://token", async (event) => {
-        console.log("Received auth://token event, isAuthenticating:", isAuthenticating.current);
-        console.log("Token payload length:", event.payload?.length);
+      const unlistenToken = await listen<string>(
+        "auth://token",
+        async (event) => {
+          console.log(
+            "Received auth://token event, isAuthenticating:",
+            isAuthenticating.current,
+          );
+          console.log("Token payload length:", event.payload?.length);
 
-        if (!isAuthenticating.current) {
-          console.log("Ignoring auth://token - not authenticating");
-          return;
-        }
-
-        try {
-          setState((prev) => ({ ...prev, isLoading: true, error: null }));
-
-          const tokenData: ImplicitTokenData = JSON.parse(event.payload);
-          console.log("Parsed implicit flow tokens, has access_token:", !!tokenData.access_token);
-
-          // Decode the JWT to get user info (avoid network request that fails in Tauri)
-          const jwtPayload = decodeJwtPayload(tokenData.access_token);
-          if (!jwtPayload) {
-            throw new Error("Failed to decode access token");
+          if (!isAuthenticating.current) {
+            console.log("Ignoring auth://token - not authenticating");
+            return;
           }
 
-          console.log("Decoded JWT payload:", jwtPayload);
+          try {
+            setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
-          // Extract user info from JWT payload
-          // Supabase JWT contains: sub (user_id), email, user_metadata, app_metadata
-          const userId = jwtPayload.sub as string;
-          const email = jwtPayload.email as string | undefined;
-          const userMetadata = (jwtPayload.user_metadata as Record<string, unknown>) || {};
-          const appMetadata = (jwtPayload.app_metadata as Record<string, unknown>) || {};
+            const tokenData: ImplicitTokenData = JSON.parse(event.payload);
+            console.log(
+              "Parsed implicit flow tokens, has access_token:",
+              !!tokenData.access_token,
+            );
 
-          if (!userId) {
-            throw new Error("No user ID in token");
+            // Decode the JWT to get user info (avoid network request that fails in Tauri)
+            const jwtPayload = decodeJwtPayload(tokenData.access_token);
+            if (!jwtPayload) {
+              throw new Error("Failed to decode access token");
+            }
+
+            console.log("Decoded JWT payload:", jwtPayload);
+
+            // Extract user info from JWT payload
+            // Supabase JWT contains: sub (user_id), email, user_metadata, app_metadata
+            const userId = jwtPayload.sub as string;
+            const email = jwtPayload.email as string | undefined;
+            const userMetadata =
+              (jwtPayload.user_metadata as Record<string, unknown>) || {};
+            const appMetadata =
+              (jwtPayload.app_metadata as Record<string, unknown>) || {};
+
+            if (!userId) {
+              throw new Error("No user ID in token");
+            }
+
+            // Calculate expires_at from expires_in
+            const expiresIn = parseInt(tokenData.expires_in || "3600", 10);
+            const expiresAt = Math.floor(Date.now() / 1000) + expiresIn;
+
+            // Save session to Tauri credentials store
+            await commands.authSaveSession({
+              access_token: tokenData.access_token,
+              refresh_token: tokenData.refresh_token || "",
+              expires_at: expiresAt,
+              user_id: userId,
+              email: email ?? null,
+              name:
+                (userMetadata.full_name as string) ||
+                (userMetadata.name as string) ||
+                (userMetadata.user_name as string) ||
+                null,
+              avatar_url:
+                (userMetadata.avatar_url as string) ||
+                (userMetadata.picture as string) ||
+                null,
+              provider: (appMetadata.provider as string) || null,
+            });
+
+            // Update local state
+            const authUser = await commands.authGetUser();
+            setState({
+              isAuthenticated: true,
+              isLoading: false,
+              user: authUser,
+              error: null,
+            });
+          } catch (e) {
+            console.error("Failed to process implicit flow tokens:", e);
+            setState((prev) => ({
+              ...prev,
+              error: String(e),
+              isLoading: false,
+            }));
+          } finally {
+            isAuthenticating.current = false;
+            await commands.authStopServer();
           }
-
-          // Calculate expires_at from expires_in
-          const expiresIn = parseInt(tokenData.expires_in || "3600", 10);
-          const expiresAt = Math.floor(Date.now() / 1000) + expiresIn;
-
-          // Save session to Tauri credentials store
-          await commands.authSaveSession({
-            access_token: tokenData.access_token,
-            refresh_token: tokenData.refresh_token || "",
-            expires_at: expiresAt,
-            user_id: userId,
-            email: email ?? null,
-            name:
-              (userMetadata.full_name as string) ||
-              (userMetadata.name as string) ||
-              (userMetadata.user_name as string) ||
-              null,
-            avatar_url:
-              (userMetadata.avatar_url as string) ||
-              (userMetadata.picture as string) ||
-              null,
-            provider: (appMetadata.provider as string) || null,
-          });
-
-          // Update local state
-          const authUser = await commands.authGetUser();
-          setState({
-            isAuthenticated: true,
-            isLoading: false,
-            user: authUser,
-            error: null,
-          });
-        } catch (e) {
-          console.error("Failed to process implicit flow tokens:", e);
-          setState((prev) => ({
-            ...prev,
-            error: String(e),
-            isLoading: false,
-          }));
-        } finally {
-          isAuthenticating.current = false;
-          await commands.authStopServer();
-        }
-      });
+        },
+      );
 
       // Also listen for auth errors
-      const unlistenError = await listen<string>("auth://error", async (event) => {
-        console.error("Auth error from server:", event.payload);
-        setState((prev) => ({
-          ...prev,
-          error: event.payload,
-          isLoading: false,
-        }));
-        isAuthenticating.current = false;
-        await commands.authStopServer();
-      });
+      const unlistenError = await listen<string>(
+        "auth://error",
+        async (event) => {
+          console.error("Auth error from server:", event.payload);
+          setState((prev) => ({
+            ...prev,
+            error: event.payload,
+            isLoading: false,
+          }));
+          isAuthenticating.current = false;
+          await commands.authStopServer();
+        },
+      );
 
       return () => {
         unlistenToken();

@@ -37,7 +37,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onModelSelected }) => {
       "vad-download-progress",
       (event) => {
         setVadProgress(Math.round(event.payload.percentage));
-      }
+      },
     );
 
     const unlistenComplete = listen("vad-download-complete", () => {
@@ -194,9 +194,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onModelSelected }) => {
               )}
             </div>
 
-            <p className="text-text/40 text-xs">
-              {t("onboarding.vad.size")}
-            </p>
+            <p className="text-text/40 text-xs">{t("onboarding.vad.size")}</p>
           </div>
         )}
 

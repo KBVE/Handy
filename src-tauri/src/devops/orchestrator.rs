@@ -105,7 +105,11 @@ pub fn spawn_agent(config: &SpawnConfig, repo_path: &str) -> Result<SpawnResult,
 
     // 2. Generate session name if not provided
     let session_name = config.session_name.clone().unwrap_or_else(|| {
-        format!("handy-issue-{}-{}", config.issue_number, chrono::Utc::now().timestamp())
+        format!(
+            "handy-issue-{}-{}",
+            config.issue_number,
+            chrono::Utc::now().timestamp()
+        )
     });
 
     // 3. Create worktree for isolated work
@@ -179,9 +183,9 @@ pub fn list_agent_statuses() -> Result<Vec<AgentStatus>, String> {
             issue_ref: metadata.as_ref().and_then(|m| m.issue_ref.clone()),
             repo: metadata.as_ref().and_then(|m| m.repo.clone()),
             issue_number: metadata.as_ref().and_then(|m| {
-                m.issue_ref.as_ref().and_then(|r| {
-                    r.split('#').last().and_then(|n| n.parse().ok())
-                })
+                m.issue_ref
+                    .as_ref()
+                    .and_then(|r| r.split('#').last().and_then(|n| n.parse().ok()))
             }),
             worktree: metadata.as_ref().and_then(|m| m.worktree.clone()),
             agent_type: metadata
@@ -252,8 +256,12 @@ pub fn create_pr_from_agent(
     // Get session metadata
     let metadata = tmux::get_session_metadata(session_name)?;
 
-    let repo = metadata.repo.ok_or("Session has no associated repository")?;
-    let worktree_path = metadata.worktree.ok_or("Session has no associated worktree")?;
+    let repo = metadata
+        .repo
+        .ok_or("Session has no associated repository")?;
+    let worktree_path = metadata
+        .worktree
+        .ok_or("Session has no associated worktree")?;
 
     // Get worktree info to find the branch
     let worktree_info = worktree::get_worktree_info(&worktree_path, &worktree_path)?;
@@ -395,7 +403,10 @@ pub fn check_and_cleanup_merged_pr(
 
         // Update issue if linked
         if let Some(issue_ref) = &metadata.issue_ref {
-            if let Some(issue_num) = issue_ref.split('#').last().and_then(|n| n.parse::<u64>().ok())
+            if let Some(issue_num) = issue_ref
+                .split('#')
+                .last()
+                .and_then(|n| n.parse::<u64>().ok())
             {
                 let comment = format!(
                     "✅ **PR Merged & Cleanup Complete**\n\n\

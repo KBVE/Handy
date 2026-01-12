@@ -78,7 +78,9 @@ export const DiscordSettings: React.FC = () => {
   const [ttsModels, setTtsModels] = useState<OnichanModelInfo[]>([]);
   const [selectedLlmId, setSelectedLlmId] = useState<string | null>(null);
   const [selectedTtsId, setSelectedTtsId] = useState<string | null>(null);
-  const [downloadProgress, setDownloadProgress] = useState<Record<string, number>>({});
+  const [downloadProgress, setDownloadProgress] = useState<
+    Record<string, number>
+  >({});
   const [loadingModel, setLoadingModel] = useState<string | null>(null);
 
   // Check if token exists on mount (we only get masked version)
@@ -133,10 +135,13 @@ export const DiscordSettings: React.FC = () => {
     });
 
     // Listen for conversation state changes
-    const unlistenConversation = listen<string>("discord-conversation-state", (event) => {
-      setConversationState(event.payload);
-      setIsConversationMode(event.payload !== "stopped");
-    });
+    const unlistenConversation = listen<string>(
+      "discord-conversation-state",
+      (event) => {
+        setConversationState(event.payload);
+        setIsConversationMode(event.payload !== "stopped");
+      },
+    );
 
     // Listen for model download progress
     const unlistenProgress = listen<DownloadProgress>(
@@ -146,7 +151,7 @@ export const DiscordSettings: React.FC = () => {
           ...prev,
           [event.payload.model_id]: event.payload.percentage,
         }));
-      }
+      },
     );
 
     const unlistenComplete = listen<string>(
@@ -162,7 +167,7 @@ export const DiscordSettings: React.FC = () => {
         const tts = await commands.getOnichanTtsModels();
         setLlmModels(llm);
         setTtsModels(tts);
-      }
+      },
     );
 
     return () => {
@@ -214,7 +219,7 @@ export const DiscordSettings: React.FC = () => {
       const delay = 1000;
 
       while (attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise((resolve) => setTimeout(resolve, delay));
         const guildsResult = await commands.discordGetGuilds();
         if (guildsResult.status === "ok" && guildsResult.data.length > 0) {
           setGuilds(guildsResult.data);
@@ -222,7 +227,12 @@ export const DiscordSettings: React.FC = () => {
           break;
         }
         attempts++;
-        setConnectionStatus(t("discord.status.waitingForServers", { attempt: attempts, max: maxAttempts }));
+        setConnectionStatus(
+          t("discord.status.waitingForServers", {
+            attempt: attempts,
+            max: maxAttempts,
+          }),
+        );
       }
 
       setIsLoadingGuilds(false);
@@ -270,7 +280,10 @@ export const DiscordSettings: React.FC = () => {
     }
     setIsConnecting(true);
     setError(null);
-    const result = await commands.discordConnect(selectedGuild, selectedChannel);
+    const result = await commands.discordConnect(
+      selectedGuild,
+      selectedChannel,
+    );
     if (result.status === "error") {
       setError(result.error);
       setIsConnecting(false);
@@ -338,7 +351,7 @@ export const DiscordSettings: React.FC = () => {
       const delay = 1000;
 
       while (attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise((resolve) => setTimeout(resolve, delay));
         const guildsResult = await commands.discordGetGuilds();
         if (guildsResult.status === "ok" && guildsResult.data.length > 0) {
           setGuilds(guildsResult.data);
@@ -346,7 +359,12 @@ export const DiscordSettings: React.FC = () => {
           break;
         }
         attempts++;
-        setConnectionStatus(t("discord.status.waitingForServers", { attempt: attempts, max: maxAttempts }));
+        setConnectionStatus(
+          t("discord.status.waitingForServers", {
+            attempt: attempts,
+            max: maxAttempts,
+          }),
+        );
       }
 
       setIsLoadingGuilds(false);
@@ -411,23 +429,26 @@ export const DiscordSettings: React.FC = () => {
         }
       }
     },
-    [selectedLlmId, selectedTtsId, refreshSidecarState]
+    [selectedLlmId, selectedTtsId, refreshSidecarState],
   );
 
-  const handleLoadLlm = useCallback(async (modelId: string) => {
-    setLoadingModel(modelId);
-    try {
-      const result = await commands.loadLocalLlm(modelId);
-      if (result.status === "ok") {
-        setSelectedLlmId(modelId);
-        refreshSidecarState();
-      } else {
-        setError(`Failed to load LLM: ${result.error}`);
+  const handleLoadLlm = useCallback(
+    async (modelId: string) => {
+      setLoadingModel(modelId);
+      try {
+        const result = await commands.loadLocalLlm(modelId);
+        if (result.status === "ok") {
+          setSelectedLlmId(modelId);
+          refreshSidecarState();
+        } else {
+          setError(`Failed to load LLM: ${result.error}`);
+        }
+      } finally {
+        setLoadingModel(null);
       }
-    } finally {
-      setLoadingModel(null);
-    }
-  }, [refreshSidecarState]);
+    },
+    [refreshSidecarState],
+  );
 
   const handleUnloadLlm = useCallback(async () => {
     await commands.unloadLocalLlm();
@@ -435,17 +456,20 @@ export const DiscordSettings: React.FC = () => {
     refreshSidecarState();
   }, [refreshSidecarState]);
 
-  const handleLoadTts = useCallback(async (modelId: string) => {
-    setLoadingModel(modelId);
-    const result = await commands.loadLocalTts(modelId);
-    setLoadingModel(null);
-    if (result.status === "ok") {
-      setSelectedTtsId(modelId);
-      refreshSidecarState();
-    } else {
-      setError(`Failed to load TTS: ${result.error}`);
-    }
-  }, [refreshSidecarState]);
+  const handleLoadTts = useCallback(
+    async (modelId: string) => {
+      setLoadingModel(modelId);
+      const result = await commands.loadLocalTts(modelId);
+      setLoadingModel(null);
+      if (result.status === "ok") {
+        setSelectedTtsId(modelId);
+        refreshSidecarState();
+      } else {
+        setError(`Failed to load TTS: ${result.error}`);
+      }
+    },
+    [refreshSidecarState],
+  );
 
   const handleUnloadTts = useCallback(async () => {
     await commands.unloadLocalTts();
@@ -458,10 +482,11 @@ export const DiscordSettings: React.FC = () => {
     model: OnichanModelInfo,
     isSelected: boolean,
     onLoad: () => void,
-    onUnload: () => void
+    onUnload: () => void,
   ) => {
     // Check both local state and backend state for downloading
-    const isDownloading = downloadProgress[model.id] !== undefined || model.is_downloading;
+    const isDownloading =
+      downloadProgress[model.id] !== undefined || model.is_downloading;
     const progress = downloadProgress[model.id] || 0;
     const isLoading = loadingModel === model.id;
 
@@ -517,7 +542,8 @@ export const DiscordSettings: React.FC = () => {
             <p className="text-xs text-text/60 mt-1">{model.description}</p>
             <p className="text-xs text-text/40 mt-1">
               {model.size_mb} MB
-              {model.context_size && ` • ${model.context_size.toLocaleString()} ctx`}
+              {model.context_size &&
+                ` • ${model.context_size.toLocaleString()} ctx`}
               {model.voice_name && ` • ${model.voice_name}`}
             </p>
             {isAvailable && !isLoading && (
@@ -663,11 +689,13 @@ export const DiscordSettings: React.FC = () => {
 
           {/* Bot Online/Offline Status */}
           {hasToken && (
-            <div className={`mb-4 p-3 rounded-lg flex items-center justify-between ${
-              isBotOnline
-                ? "bg-green-500/10 border border-green-500/30"
-                : "bg-yellow-500/10 border border-yellow-500/30"
-            }`}>
+            <div
+              className={`mb-4 p-3 rounded-lg flex items-center justify-between ${
+                isBotOnline
+                  ? "bg-green-500/10 border border-green-500/30"
+                  : "bg-yellow-500/10 border border-yellow-500/30"
+              }`}
+            >
               <div className="flex items-center gap-2">
                 <span className="relative flex h-3 w-3">
                   {isBotOnline ? (
@@ -679,11 +707,12 @@ export const DiscordSettings: React.FC = () => {
                     <span className="relative inline-flex rounded-full h-3 w-3 bg-yellow-500"></span>
                   )}
                 </span>
-                <span className={`text-sm font-medium ${isBotOnline ? "text-green-400" : "text-yellow-400"}`}>
+                <span
+                  className={`text-sm font-medium ${isBotOnline ? "text-green-400" : "text-yellow-400"}`}
+                >
                   {isBotOnline
                     ? t("discord.status.botOnline")
-                    : t("discord.status.botOffline")
-                  }
+                    : t("discord.status.botOffline")}
                 </span>
               </div>
               {!isBotOnline && !isConnecting && (
@@ -764,7 +793,9 @@ export const DiscordSettings: React.FC = () => {
                   className="flex-1 px-3 py-2 bg-background-dark/50 border border-background-dark rounded-lg text-sm focus:outline-none focus:border-logo-primary disabled:opacity-50"
                 >
                   <option value="">
-                    {isLoadingGuilds ? t("discord.guild.loading") : t("discord.guild.placeholder")}
+                    {isLoadingGuilds
+                      ? t("discord.guild.loading")
+                      : t("discord.guild.placeholder")}
                   </option>
                   {guilds.map((guild) => (
                     <option key={guild.id} value={guild.id}>
@@ -778,7 +809,9 @@ export const DiscordSettings: React.FC = () => {
                   className="px-3 py-2 bg-background-dark/50 border border-background-dark rounded-lg text-sm hover:bg-background-dark/70 transition-colors disabled:opacity-50"
                   title={t("discord.guild.refresh")}
                 >
-                  <RefreshCw className={`w-4 h-4 ${isLoadingGuilds ? "animate-spin" : ""}`} />
+                  <RefreshCw
+                    className={`w-4 h-4 ${isLoadingGuilds ? "animate-spin" : ""}`}
+                  />
                 </button>
               </div>
               {guilds.length === 0 && !isLoadingGuilds && (
@@ -852,8 +885,8 @@ export const DiscordSettings: React.FC = () => {
                   model,
                   selectedLlmId === model.id && isLlmLoaded,
                   () => handleLoadLlm(model.id),
-                  handleUnloadLlm
-                )
+                  handleUnloadLlm,
+                ),
               )}
             </div>
             {!isLlmLoaded && (
@@ -883,8 +916,8 @@ export const DiscordSettings: React.FC = () => {
                   model,
                   selectedTtsId === model.id && isTtsLoaded,
                   () => handleLoadTts(model.id),
-                  handleUnloadTts
-                )
+                  handleUnloadTts,
+                ),
               )}
             </div>
             {!isTtsLoaded && (

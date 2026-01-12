@@ -8,8 +8,8 @@ interface FillerDetectionToggleProps {
   grouped?: boolean;
 }
 
-export const FillerDetectionToggle: React.FC<FillerDetectionToggleProps> = React.memo(
-  ({ descriptionMode = "tooltip", grouped = false }) => {
+export const FillerDetectionToggle: React.FC<FillerDetectionToggleProps> =
+  React.memo(({ descriptionMode = "tooltip", grouped = false }) => {
     const { t } = useTranslation();
     const { getSetting, updateSetting, isUpdating } = useSettings();
 
@@ -26,5 +26,4 @@ export const FillerDetectionToggle: React.FC<FillerDetectionToggleProps> = React
         grouped={grouped}
       />
     );
-  },
-);
+  });

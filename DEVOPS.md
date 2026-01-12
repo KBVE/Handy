@@ -8,10 +8,10 @@ The DevOps tab provides an interface for managing multiple coding agents (like C
 
 The DevOps tab requires the following CLI tools to be installed:
 
-| Tool | Purpose | Installation |
-|------|---------|--------------|
-| `gh` | GitHub CLI for PR management, issues, repo operations | `brew install gh` |
-| `tmux` | Terminal multiplexer for managing agent sessions | `brew install tmux` |
+| Tool   | Purpose                                               | Installation        |
+| ------ | ----------------------------------------------------- | ------------------- |
+| `gh`   | GitHub CLI for PR management, issues, repo operations | `brew install gh`   |
+| `tmux` | Terminal multiplexer for managing agent sessions      | `brew install tmux` |
 
 ## Architecture
 
@@ -47,11 +47,13 @@ The DevOps tab requires the following CLI tools to be installed:
 ### Phase 1: Foundation (This Patch)
 
 #### 1.1 Backend - Dependency Detection
+
 - [ ] Create `src-tauri/src/devops/mod.rs` module
 - [ ] Add `check_dependencies()` command to detect `gh` and `tmux`
 - [ ] Return structured status for each dependency (installed, version, path)
 
 #### 1.2 Frontend - DevOps Tab Shell
+
 - [ ] Create `src/components/settings/devops/DevOpsSettings.tsx`
 - [ ] Add DevOps tab to settings navigation
 - [ ] Display dependency status with install instructions if missing
@@ -62,6 +64,7 @@ The DevOps tab requires the following CLI tools to be installed:
 tmux sessions persist independently of Handy, enabling recovery after hot reloads, crashes, or app restarts.
 
 #### 2.1 Session Persistence Architecture
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         tmux server                              │
@@ -88,6 +91,7 @@ tmux sessions persist independently of Handy, enabling recovery after hot reload
 ```
 
 #### 2.2 Session Naming Convention
+
 ```
 handy-agent-{issue_number}[-{suffix}]
 
@@ -136,6 +140,7 @@ Metadata is stored in two places for redundancy:
 ```
 
 **tmux environment (Layer 1):**
+
 ```bash
 # Set when spawning agent
 tmux set-environment -t handy-agent-42 HANDY_ISSUE_REF "org/repo#42"
@@ -150,6 +155,7 @@ tmux show-environment -t handy-agent-42
 ```
 
 **GitHub issue comment (Layer 2):**
+
 ```bash
 # Posted when agent starts (hidden metadata + visible status)
 gh issue comment 42 --repo org/repo --body "$(cat <<'EOF'
@@ -194,16 +200,18 @@ On Startup:
 ```
 
 #### 2.5 Session Commands
-- [ ] `list_tmux_sessions()` - List all tmux sessions (filter by handy-agent-* prefix)
+
+- [ ] `list_tmux_sessions()` - List all tmux sessions (filter by handy-agent-\* prefix)
 - [ ] `create_tmux_session(name)` - Create named session with metadata
 - [ ] `kill_tmux_session(name)` - Terminate session
 - [ ] `get_session_output(name, lines?)` - Get recent output from session
 - [ ] `recover_agent_sessions()` - Rebuild state from tmux + GitHub fallback
-- [ ] `get_session_metadata(name)` - Read HANDY_* env vars from session
+- [ ] `get_session_metadata(name)` - Read HANDY\_\* env vars from session
 - [ ] `sync_issue_metadata(issue_ref, metadata)` - Update hidden metadata in issue comment
 - [ ] `parse_issue_metadata(issue_ref)` - Extract HANDY_AGENT_METADATA from comments
 
 #### 2.6 Recovery Flow
+
 ```rust
 #[derive(Serialize, Deserialize, Type)]
 struct AgentMetadata {
@@ -243,6 +251,7 @@ enum RecoveryAction {
 ```
 
 #### 2.7 Agent Spawning
+
 - [ ] `spawn_agent(session_name, agent_type, task)` - Launch agent in tmux
 - [ ] Support for different agent types (claude, aider, etc.)
 - [ ] Working directory configuration per agent
@@ -254,6 +263,7 @@ enum RecoveryAction {
 The worktree system enables isolated development environments for each agent, preventing conflicts when multiple agents work in parallel.
 
 #### 3.1 Worktree Lifecycle
+
 ```
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
 │   Create     │────▶│   Spawn      │────▶│   Work       │────▶│   Merge &    │
@@ -266,6 +276,7 @@ The worktree system enables isolated development environments for each agent, pr
 ```
 
 #### 3.2 Worktree Commands
+
 - [ ] `list_worktrees()` - List all git worktrees with status
 - [ ] `create_worktree(name)` - Create worktree with collision checks:
   - Validates not inside existing worktree
@@ -277,6 +288,7 @@ The worktree system enables isolated development environments for each agent, pr
 - [ ] `merge_worktree(path, target)` - Merge worktree branch into target, then cleanup
 
 #### 3.3 Worktree Configuration
+
 ```rust
 #[derive(Serialize, Deserialize, Type)]
 struct WorktreeConfig {
@@ -294,6 +306,7 @@ struct WorktreeConfig {
 Tasks are backed by GitHub issues, providing traceability, cross-repo coordination, and a single source of truth.
 
 #### 4.1 Issue Hub Architecture
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                     Parent Issue Repo                            │
@@ -311,6 +324,7 @@ Tasks are backed by GitHub issues, providing traceability, cross-repo coordinati
 ```
 
 #### 4.2 Issue Configuration
+
 ```rust
 #[derive(Serialize, Deserialize, Type)]
 struct IssueHubConfig {
@@ -342,6 +356,7 @@ struct TaskIssue {
 ```
 
 #### 4.3 Issue Commands
+
 - [ ] `configure_issue_hub(config)` - Set up parent repo for cross-repo coordination
 - [ ] `list_agent_issues(repo?)` - List issues with agent-ready label
 - [ ] `create_task_issue(repo, title, body, parent?)` - Create issue, optionally link to epic
@@ -350,6 +365,7 @@ struct TaskIssue {
 - [ ] `sync_issue_status(issue_ref)` - Update issue comments with agent progress
 
 #### 4.4 Cross-Repo Workflow
+
 ```
 1. User creates epic in hub repo: org/tasks#42 "User Authentication"
 
@@ -372,10 +388,12 @@ struct TaskIssue {
 ### Phase 5: GitHub Integration
 
 #### 5.1 Authentication & Status
+
 - [ ] `gh_auth_status()` - Check GitHub authentication
 - [ ] `gh_auth_login()` - Trigger login flow if needed
 
 #### 5.2 Repository Operations
+
 - [ ] `gh_repo_info()` - Get current repo info
 - [ ] `gh_list_prs()` - List open PRs
 - [ ] `gh_list_issues()` - List open issues
@@ -384,16 +402,19 @@ struct TaskIssue {
 ### Phase 6: Multi-Agent Orchestration
 
 #### 6.1 Task Distribution
+
 - [ ] Issue queue populated from GitHub (agent-ready label)
 - [ ] Agent status monitoring (idle, working, blocked)
 - [ ] Real-time output streaming from agent sessions
 
 #### 6.2 Coordination
+
 - [ ] Branch/worktree assignment per agent
 - [ ] Conflict detection when agents work on same files
 - [ ] Merge coordination between agent outputs
 
 #### 6.3 Templates
+
 - [ ] Pre-defined task templates (bug fix, feature, refactor)
 - [ ] Custom prompt templates for agents
 - [ ] Project-specific agent configurations

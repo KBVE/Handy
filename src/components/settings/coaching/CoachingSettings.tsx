@@ -11,7 +11,8 @@ export const CoachingSettings: React.FC = () => {
   const { t } = useTranslation();
   const { getSetting } = useSettings();
 
-  const fillerDetectionEnabled = getSetting("filler_detection_enabled") ?? false;
+  const fillerDetectionEnabled =
+    getSetting("filler_detection_enabled") ?? false;
 
   return (
     <div className="flex flex-col gap-4">

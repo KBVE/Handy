@@ -62,7 +62,7 @@ export type OAuthProvider = "github" | "discord" | "twitch";
  */
 export async function getOAuthUrl(
   provider: OAuthProvider,
-  callbackUrl: string
+  callbackUrl: string,
 ): Promise<string> {
   const supabase = await getSupabaseClient();
 
@@ -80,4 +80,3 @@ export async function getOAuthUrl(
 
   return data.url;
 }
-

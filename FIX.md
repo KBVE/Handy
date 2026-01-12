@@ -7,6 +7,7 @@ From the logs (logs/LOGS.md), I identified two critical issues:
 ### Issue 1: LLM Doesn't Recover Model After Crash
 
 **Evidence from logs (lines 805-815):**
+
 ```
 [20:57:16] Sidecar appears to have crashed during chat, attempting recovery...
 [20:57:16] Dropping sidecar process
@@ -23,6 +24,7 @@ From the logs (logs/LOGS.md), I identified two critical issues:
 **Root Cause B** (discovered later): Even after model reloads successfully, llama.cpp outputs debug text to stdout during model loading. This pollutes the JSON response stream, causing subsequent chat requests to fail with "Invalid sidecar response: expected value at line 1 column 1".
 
 The bug is in `local_llm.rs` lines 343-351:
+
 ```rust
 // Force respawn by clearing the sidecar
 {
@@ -37,6 +39,7 @@ self.ensure_sidecar()?;  // <-- But ensure_sidecar sees was_running=false!
 ### Issue 2: Audio Chunks Dropped / Not Transcribed
 
 **Evidence from logs (lines 234-280):**
+
 ```
 [INFO ] Sending audio chunk for user 2545: 4.76s (76160 mono samples)
 [INFO ] Sending audio chunk for user 2545: 0.76s (12160 mono samples)
@@ -47,6 +50,7 @@ self.ensure_sidecar()?;  // <-- But ensure_sidecar sees was_running=false!
 Audio is being sent from Discord sidecar but NOT being processed for transcription. The main loop architecture has a flaw: it only processes ONE event per iteration from the sidecar (`recv_event_timeout`), then checks transcription queue. If audio chunks arrive faster than they're processed, they pile up and some get dropped.
 
 **Root Cause**: The conversation loop processes events sequentially:
+
 1. Receive ONE audio event
 2. Check transcription results
 3. Process ONE user's audio for transcription
@@ -68,6 +72,7 @@ When multiple users are speaking simultaneously, audio events arrive faster than
 **Solution**: Pass a flag to `ensure_sidecar()` indicating crash recovery, or reload the model in `chat()` after `ensure_sidecar()` returns.
 
 **Option A (Recommended)**: Reload model explicitly in `chat()` after recovery:
+
 ```rust
 // In chat() after ensure_sidecar() for crash recovery:
 {
@@ -89,6 +94,7 @@ When multiple users are speaking simultaneously, audio events arrive faster than
 **Problem**: After model reload, llama.cpp outputs debug text to stdout which gets read as the JSON response, causing parse failures.
 
 **Solution**: Modify `send_request()` to skip non-JSON lines:
+
 ```rust
 // In send_request() - try up to 10 lines to find valid JSON
 for attempt in 0..10 {
@@ -119,6 +125,7 @@ for attempt in 0..10 {
 **Solution**: Use a dedicated audio receiver task that runs in parallel.
 
 **Architecture Change**:
+
 1. Spawn a dedicated tokio task for receiving audio events
 2. Use an unbounded channel to buffer incoming audio
 3. Main loop only processes from the channel, never directly from sidecar
@@ -153,6 +160,7 @@ while let Ok((user_id, samples, sample_rate)) = audio_rx.try_recv() {
 ```
 
 **Benefits**:
+
 - Audio receiver runs independently, never blocked by transcription
 - Unbounded channel buffers all incoming audio
 - Main loop can process all buffered audio each iteration
@@ -162,20 +170,22 @@ while let Ok((user_id, samples, sample_rate)) = audio_rx.try_recv() {
 
 ## Files to Modify
 
-| File | Changes |
-|------|---------|
-| `src-tauri/src/local_llm.rs` | Fix model reload after crash in `chat()` and `generate()`, skip non-JSON stdout output |
-| `src-tauri/src/discord_conversation.rs` | Add dedicated audio receiver task |
+| File                                    | Changes                                                                                |
+| --------------------------------------- | -------------------------------------------------------------------------------------- |
+| `src-tauri/src/local_llm.rs`            | Fix model reload after crash in `chat()` and `generate()`, skip non-JSON stdout output |
+| `src-tauri/src/discord_conversation.rs` | Add dedicated audio receiver task                                                      |
 
 ---
 
 ## Critical Code Locations
 
 ### local_llm.rs
+
 - **Lines 343-364**: `chat()` crash recovery - needs to reload model
 - **Lines 233-272**: `ensure_sidecar()` - currently doesn't reload if guard was cleared
 
 ### discord_conversation.rs
+
 - **Lines 322-378**: Event receiving loop - needs to be moved to dedicated task
 - **Lines 380-398**: Audio queue processing - needs to drain unbounded channel
 

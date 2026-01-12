@@ -41,7 +41,7 @@ export const useVadModel = (): UseVadModelReturn => {
       "vad-download-progress",
       (event) => {
         setDownloadProgress(event.payload.percentage);
-      }
+      },
     );
 
     const unlistenComplete = listen("vad-download-complete", () => {

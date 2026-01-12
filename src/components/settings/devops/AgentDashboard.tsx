@@ -35,7 +35,9 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [cleaningUp, setCleaningUp] = useState<string | null>(null);
   const [completingWork, setCompletingWork] = useState<string | null>(null);
-  const [filterMode, setFilterMode] = useState<"all" | "local" | "remote">("all");
+  const [filterMode, setFilterMode] = useState<"all" | "local" | "remote">(
+    "all",
+  );
   const [currentMachineId, setCurrentMachineId] = useState<string>("");
 
   const loadAgents = useCallback(async () => {
@@ -58,9 +60,12 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
   useEffect(() => {
     loadAgents();
     // Load current machine ID
-    commands.getCurrentMachineId().then(setCurrentMachineId).catch(() => {});
-    // Refresh every 10 seconds
-    const interval = setInterval(loadAgents, 10000);
+    commands
+      .getCurrentMachineId()
+      .then(setCurrentMachineId)
+      .catch(() => {});
+    // Refresh every 12 seconds (staggered from SessionManager's 10s to avoid simultaneous updates)
+    const interval = setInterval(loadAgents, 12000);
     return () => clearInterval(interval);
   }, [loadAgents]);
 
@@ -81,7 +86,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
         null,
         ["agent-working"], // Labels to remove
         ["needs-review"], // Labels to add
-        false // Not draft
+        false, // Not draft
       );
       await loadAgents();
     } catch (err) {
@@ -112,7 +117,12 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
         setError(repoRootResult.error);
         return;
       }
-      const cleanupResult = await commands.cleanupAgent(agent.session, repoRootResult.data, removeWorktree, removeWorktree);
+      const cleanupResult = await commands.cleanupAgent(
+        agent.session,
+        repoRootResult.data,
+        removeWorktree,
+        removeWorktree,
+      );
       if (cleanupResult.status === "error") {
         setError(cleanupResult.error);
         return;
@@ -137,7 +147,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
 
   if (isLoading && agents.length === 0) {
     return (
-      <div className="flex items-center justify-center p-8">
+      <div className="flex items-center justify-center p-8 min-h-[120px]">
         <Loader2 className="w-6 h-6 animate-spin text-logo-primary" />
       </div>
     );
@@ -164,7 +174,9 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-sm text-mid-gray">
-            {t("devops.orchestrator.agentCount", { count: filteredAgents.length })}
+            {t("devops.orchestrator.agentCount", {
+              count: filteredAgents.length,
+            })}
           </span>
           {currentMachineId && (
             <span className="text-xs text-mid-gray/50 flex items-center gap-1">
@@ -216,14 +228,16 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
             className="p-1 hover:bg-mid-gray/20 rounded transition-colors"
             title={t("devops.refresh")}
           >
-            <RefreshCcw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
+            <RefreshCcw
+              className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`}
+            />
           </button>
         </div>
       </div>
 
       {/* Agent list */}
       {filteredAgents.length === 0 ? (
-        <div className="flex flex-col items-center justify-center p-8 text-center">
+        <div className="flex flex-col items-center justify-center p-8 text-center min-h-[120px]">
           <Bot className="w-12 h-12 text-mid-gray/50 mb-3" />
           <p className="text-sm text-mid-gray">
             {filterMode === "all"
@@ -237,7 +251,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
           </p>
         </div>
       ) : (
-        <div className="flex flex-col gap-2 max-h-[400px] overflow-y-auto">
+        <div className="flex flex-col gap-2 max-h-[400px] overflow-y-auto min-h-[120px]">
           {filteredAgents.map((agent) => (
             <div
               key={agent.session}
@@ -250,7 +264,9 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
               >
                 {/* Status icon */}
                 <div className="mt-1">
-                  <Bot className={`w-4 h-4 ${agent.is_attached ? "text-green-400" : "text-mid-gray"}`} />
+                  <Bot
+                    className={`w-4 h-4 ${agent.is_attached ? "text-green-400" : "text-mid-gray"}`}
+                  />
                 </div>
 
                 {/* Content */}
@@ -288,7 +304,10 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
                   {/* Metadata */}
                   <div className="mt-2 flex flex-wrap gap-3 text-xs text-mid-gray/70">
                     {agent.worktree && (
-                      <span className="flex items-center gap-1" title={agent.worktree}>
+                      <span
+                        className="flex items-center gap-1"
+                        title={agent.worktree}
+                      >
                         <FolderGit2 className="w-3 h-3" />
                         {agent.worktree.split("/").pop()}
                       </span>
@@ -335,7 +354,11 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
                     }}
                     disabled={cleaningUp === agent.session || !agent.is_local}
                     className="p-1.5 hover:bg-red-500/20 rounded transition-colors text-mid-gray hover:text-red-400 disabled:opacity-50"
-                    title={agent.is_local ? t("devops.orchestrator.cleanup") : t("devops.orchestrator.remoteCannotCleanup")}
+                    title={
+                      agent.is_local
+                        ? t("devops.orchestrator.cleanup")
+                        : t("devops.orchestrator.remoteCannotCleanup")
+                    }
                   >
                     {cleaningUp === agent.session ? (
                       <Loader2 className="w-4 h-4 animate-spin" />

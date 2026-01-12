@@ -1,6 +1,11 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { commands, GitHubPullRequest, PrStatus, GhAuthStatus } from "@/bindings";
+import {
+  commands,
+  GitHubPullRequest,
+  PrStatus,
+  GhAuthStatus,
+} from "@/bindings";
 import {
   GitPullRequest,
   ExternalLink,
@@ -75,7 +80,7 @@ export const PullRequestPanel: React.FC<PullRequestPanelProps> = ({
         activeRepo,
         "open",
         null, // all base branches
-        50 // limit
+        50, // limit
       );
       if (result.status === "ok") {
         setPrs(result.data);
@@ -89,17 +94,20 @@ export const PullRequestPanel: React.FC<PullRequestPanelProps> = ({
     }
   }, [activeRepo, checkAuth]);
 
-  const loadPrStatus = useCallback(async (prNumber: number) => {
-    if (!activeRepo) return;
-    try {
-      const result = await commands.getGithubPrStatus(activeRepo, prNumber);
-      if (result.status === "ok") {
-        setPrStatuses(prev => ({ ...prev, [prNumber]: result.data }));
+  const loadPrStatus = useCallback(
+    async (prNumber: number) => {
+      if (!activeRepo) return;
+      try {
+        const result = await commands.getGithubPrStatus(activeRepo, prNumber);
+        if (result.status === "ok") {
+          setPrStatuses((prev) => ({ ...prev, [prNumber]: result.data }));
+        }
+      } catch (err) {
+        console.error("Failed to load PR status:", err);
       }
-    } catch (err) {
-      console.error("Failed to load PR status:", err);
-    }
-  }, [activeRepo]);
+    },
+    [activeRepo],
+  );
 
   useEffect(() => {
     loadPrs();
@@ -157,7 +165,7 @@ export const PullRequestPanel: React.FC<PullRequestPanelProps> = ({
           {t("devops.prs.notAuthenticatedHint")}
         </p>
         <code className="text-xs bg-mid-gray/20 px-3 py-2 rounded">
-          gh auth login
+          {t("devops.prs.authCommand")}
         </code>
       </div>
     );
@@ -167,9 +175,7 @@ export const PullRequestPanel: React.FC<PullRequestPanelProps> = ({
   if (!activeRepo || showRepoInput) {
     return (
       <div className="flex flex-col gap-3">
-        <p className="text-sm text-mid-gray">
-          {t("devops.prs.configureRepo")}
-        </p>
+        <p className="text-sm text-mid-gray">{t("devops.prs.configureRepo")}</p>
         <div className="flex gap-2">
           <input
             type="text"
@@ -240,7 +246,9 @@ export const PullRequestPanel: React.FC<PullRequestPanelProps> = ({
           className="p-1 hover:bg-mid-gray/20 rounded transition-colors"
           title={t("devops.refresh")}
         >
-          <RefreshCcw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
+          <RefreshCcw
+            className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`}
+          />
         </button>
       </div>
 
@@ -248,7 +256,9 @@ export const PullRequestPanel: React.FC<PullRequestPanelProps> = ({
       {authStatus?.username && (
         <div className="flex items-center gap-2 text-xs text-green-400">
           <CheckCircle2 className="w-3 h-3" />
-          <span>{t("devops.prs.authenticatedAs", { user: authStatus.username })}</span>
+          <span>
+            {t("devops.prs.authenticatedAs", { user: authStatus.username })}
+          </span>
         </div>
       )}
 
@@ -256,9 +266,7 @@ export const PullRequestPanel: React.FC<PullRequestPanelProps> = ({
       {prs.length === 0 ? (
         <div className="flex flex-col items-center justify-center p-8 text-center">
           <GitPullRequest className="w-12 h-12 text-mid-gray/50 mb-3" />
-          <p className="text-sm text-mid-gray">
-            {t("devops.prs.noPrs")}
-          </p>
+          <p className="text-sm text-mid-gray">{t("devops.prs.noPrs")}</p>
           <p className="text-xs text-mid-gray/70 mt-1">
             {t("devops.prs.noPrsHint")}
           </p>
@@ -373,12 +381,23 @@ export const PullRequestPanel: React.FC<PullRequestPanelProps> = ({
                       <div className="flex items-center gap-2">
                         {getCheckStatusIcon(prStatuses[pr.number].checks.state)}
                         <span className="text-xs">
-                          {t("devops.prs.checks")}: {prStatuses[pr.number].checks.passing}/{prStatuses[pr.number].checks.total} {t("devops.prs.passing")}
+                          {t("devops.prs.checks")}:{" "}
+                          {prStatuses[pr.number].checks.passing}/
+                          {prStatuses[pr.number].checks.total}{" "}
+                          {t("devops.prs.passing")}
                           {prStatuses[pr.number].checks.failing > 0 && (
-                            <span className="text-red-400"> ({prStatuses[pr.number].checks.failing} {t("devops.prs.failing")})</span>
+                            <span className="text-red-400">
+                              {" "}
+                              ({prStatuses[pr.number].checks.failing}{" "}
+                              {t("devops.prs.failing")})
+                            </span>
                           )}
                           {prStatuses[pr.number].checks.pending > 0 && (
-                            <span className="text-yellow-400"> ({prStatuses[pr.number].checks.pending} {t("devops.prs.pending")})</span>
+                            <span className="text-yellow-400">
+                              {" "}
+                              ({prStatuses[pr.number].checks.pending}{" "}
+                              {t("devops.prs.pending")})
+                            </span>
                           )}
                         </span>
                       </div>
@@ -387,15 +406,23 @@ export const PullRequestPanel: React.FC<PullRequestPanelProps> = ({
                       <div className="flex items-center gap-2">
                         {prStatuses[pr.number].reviews.approved > 0 ? (
                           <CheckCircle2 className="w-4 h-4 text-green-400" />
-                        ) : prStatuses[pr.number].reviews.changes_requested > 0 ? (
+                        ) : prStatuses[pr.number].reviews.changes_requested >
+                          0 ? (
                           <XCircle className="w-4 h-4 text-red-400" />
                         ) : (
                           <Clock className="w-4 h-4 text-mid-gray" />
                         )}
                         <span className="text-xs">
-                          {t("devops.prs.reviews")}: {prStatuses[pr.number].reviews.approved} {t("devops.prs.approved")}
-                          {prStatuses[pr.number].reviews.changes_requested > 0 && (
-                            <span className="text-red-400">, {prStatuses[pr.number].reviews.changes_requested} {t("devops.prs.changesRequested")}</span>
+                          {t("devops.prs.reviews")}:{" "}
+                          {prStatuses[pr.number].reviews.approved}{" "}
+                          {t("devops.prs.approved")}
+                          {prStatuses[pr.number].reviews.changes_requested >
+                            0 && (
+                            <span className="text-red-400">
+                              ,{" "}
+                              {prStatuses[pr.number].reviews.changes_requested}{" "}
+                              {t("devops.prs.changesRequested")}
+                            </span>
                           )}
                         </span>
                       </div>
@@ -409,7 +436,9 @@ export const PullRequestPanel: React.FC<PullRequestPanelProps> = ({
                             <XCircle className="w-4 h-4 text-red-400" />
                           )}
                           <span className="text-xs">
-                            {pr.mergeable ? t("devops.prs.mergeable") : t("devops.prs.notMergeable")}
+                            {pr.mergeable
+                              ? t("devops.prs.mergeable")
+                              : t("devops.prs.notMergeable")}
                           </span>
                         </div>
                       )}

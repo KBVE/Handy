@@ -11,6 +11,9 @@ use std::process::Command;
 /// Session naming prefix for all Handy agent sessions
 const SESSION_PREFIX: &str = "handy-agent-";
 
+/// Custom socket name to avoid macOS /private/tmp permission issues
+const SOCKET_NAME: &str = "handy";
+
 /// Environment variable keys stored in tmux sessions
 const ENV_ISSUE_REF: &str = "HANDY_ISSUE_REF";
 const ENV_REPO: &str = "HANDY_REPO";
@@ -103,7 +106,7 @@ pub struct RecoveredSession {
 /// Check if tmux server is running
 pub fn is_tmux_running() -> bool {
     Command::new("tmux")
-        .args(["list-sessions"])
+        .args(["-L", SOCKET_NAME, "list-sessions"])
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
@@ -129,6 +132,8 @@ pub fn list_sessions() -> Result<Vec<TmuxSession>, String> {
     // Format: session_name, attached, windows, created
     let output = Command::new("tmux")
         .args([
+            "-L",
+            SOCKET_NAME,
             "list-sessions",
             "-F",
             "#{session_name}\t#{session_attached}\t#{session_windows}\t#{session_created}",
@@ -185,6 +190,8 @@ fn check_session_has_active_process(session_name: &str) -> bool {
     // Get the command running in the session's active pane
     Command::new("tmux")
         .args([
+            "-L",
+            SOCKET_NAME,
             "list-panes",
             "-t",
             session_name,
@@ -207,7 +214,7 @@ fn check_session_has_active_process(session_name: &str) -> bool {
 /// Get metadata for a specific session from its environment variables
 pub fn get_session_metadata(session_name: &str) -> Result<AgentMetadata, String> {
     let output = Command::new("tmux")
-        .args(["show-environment", "-t", session_name])
+        .args(["-L", SOCKET_NAME, "show-environment", "-t", session_name])
         .output()
         .map_err(|e| format!("Failed to get session environment: {}", e))?;
 
@@ -271,8 +278,12 @@ pub fn create_session(
         args.push(dir);
     }
 
+    // Prepend -L flag for custom socket
+    let mut full_args = vec!["-L", SOCKET_NAME];
+    full_args.extend_from_slice(&args);
+
     let output = Command::new("tmux")
-        .args(&args)
+        .args(&full_args)
         .output()
         .map_err(|e| format!("Failed to create session: {}", e))?;
 
@@ -304,7 +315,15 @@ pub fn create_session(
 /// Set an environment variable in a tmux session
 fn set_session_env(session_name: &str, key: &str, value: &str) -> Result<(), String> {
     let output = Command::new("tmux")
-        .args(["set-environment", "-t", session_name, key, value])
+        .args([
+            "-L",
+            SOCKET_NAME,
+            "set-environment",
+            "-t",
+            session_name,
+            key,
+            value,
+        ])
         .output()
         .map_err(|e| format!("Failed to set environment: {}", e))?;
 
@@ -322,7 +341,7 @@ fn set_session_env(session_name: &str, key: &str, value: &str) -> Result<(), Str
 /// Kill a tmux session
 pub fn kill_session(session_name: &str) -> Result<(), String> {
     let output = Command::new("tmux")
-        .args(["kill-session", "-t", session_name])
+        .args(["-L", SOCKET_NAME, "kill-session", "-t", session_name])
         .output()
         .map_err(|e| format!("Failed to kill session: {}", e))?;
 
@@ -342,6 +361,8 @@ pub fn get_session_output(session_name: &str, lines: Option<u32>) -> Result<Stri
 
     let output = Command::new("tmux")
         .args([
+            "-L",
+            SOCKET_NAME,
             "capture-pane",
             "-t",
             session_name,
@@ -365,7 +386,15 @@ pub fn get_session_output(session_name: &str, lines: Option<u32>) -> Result<Stri
 /// Send a command to a session
 pub fn send_command(session_name: &str, command: &str) -> Result<(), String> {
     let output = Command::new("tmux")
-        .args(["send-keys", "-t", session_name, command, "Enter"])
+        .args([
+            "-L",
+            SOCKET_NAME,
+            "send-keys",
+            "-t",
+            session_name,
+            command,
+            "Enter",
+        ])
         .output()
         .map_err(|e| format!("Failed to send command: {}", e))?;
 

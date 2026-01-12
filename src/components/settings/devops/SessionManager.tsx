@@ -25,7 +25,9 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
 }) => {
   const { t } = useTranslation();
   const [sessions, setSessions] = useState<TmuxSession[]>([]);
-  const [recoveredSessions, setRecoveredSessions] = useState<RecoveredSession[]>([]);
+  const [recoveredSessions, setRecoveredSessions] = useState<
+    RecoveredSession[]
+  >([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isTmuxRunning, setIsTmuxRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,7 +104,7 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center p-8">
+      <div className="flex items-center justify-center p-8 min-h-[120px]">
         <Loader2 className="w-6 h-6 animate-spin text-logo-primary" />
       </div>
     );
@@ -110,7 +112,7 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
 
   if (!isTmuxRunning) {
     return (
-      <div className="flex flex-col items-center justify-center p-8 text-center">
+      <div className="flex flex-col items-center justify-center p-8 text-center min-h-[120px]">
         <Terminal className="w-12 h-12 text-mid-gray/50 mb-3" />
         <p className="text-sm text-mid-gray mb-2">
           {t("devops.sessions.tmuxNotRunning")}
@@ -139,9 +141,11 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
 
   if (sessions.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center p-8 text-center">
+      <div className="flex flex-col items-center justify-center p-8 text-center min-h-[120px]">
         <Terminal className="w-12 h-12 text-mid-gray/50 mb-3" />
-        <p className="text-sm text-mid-gray">{t("devops.sessions.noSessions")}</p>
+        <p className="text-sm text-mid-gray">
+          {t("devops.sessions.noSessions")}
+        </p>
         <p className="text-xs text-mid-gray/70 mt-1">
           {t("devops.sessions.noSessionsHint")}
         </p>
@@ -162,12 +166,14 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
           className="p-1 hover:bg-mid-gray/20 rounded transition-colors"
           title={t("devops.refresh")}
         >
-          <RefreshCcw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
+          <RefreshCcw
+            className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`}
+          />
         </button>
       </div>
 
       {/* Session list */}
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2 min-h-[120px]">
         {sessions.map((session) => (
           <div
             key={session.name}
@@ -204,7 +210,9 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
                   {session.metadata.started_at && (
                     <div className="flex items-center gap-1">
                       <Clock className="w-3 h-3" />
-                      <span>{formatTimestamp(session.metadata.started_at)}</span>
+                      <span>
+                        {formatTimestamp(session.metadata.started_at)}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -246,7 +254,10 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
                 >
                   <RotateCcw className="w-4 h-4 text-yellow-400" />
                   <span className="flex-1">
-                    {session.metadata.session}: {t(`devops.sessions.action.${session.recommended_action.toLowerCase()}`)}
+                    {session.metadata.session}:{" "}
+                    {t(
+                      `devops.sessions.action.${session.recommended_action.toLowerCase()}`,
+                    )}
                   </span>
                 </div>
               ))}

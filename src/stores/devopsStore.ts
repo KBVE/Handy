@@ -96,26 +96,42 @@ export const useDevOpsStore = create<DevOpsStore>()(
 
     // Refresh agents from backend
     refreshAgents: async (showLoading = false) => {
-      if (showLoading) {
+      const state = get();
+
+      if (showLoading && !state.agentsLoading) {
         set({ agentsLoading: true });
       }
-      set({ agentsError: null });
+
+      // Only clear error if there is one
+      if (state.agentsError !== null) {
+        set({ agentsError: null });
+      }
 
       try {
         const result = await commands.listAgentStatuses();
         if (result.status === "ok") {
           // Only update if data actually changed
-          const currentAgents = get().agents;
+          const currentAgents = state.agents;
           if (JSON.stringify(currentAgents) !== JSON.stringify(result.data)) {
             set({ agents: result.data });
           }
+          // If there was an error before, clear it
+          if (state.agentsError !== null) {
+            set({ agentsError: null });
+          }
         } else {
-          set({ agentsError: result.error });
+          // Only set error if it changed
+          if (state.agentsError !== result.error) {
+            set({ agentsError: result.error });
+          }
         }
       } catch (err) {
-        set({ agentsError: err instanceof Error ? err.message : String(err) });
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        if (state.agentsError !== errorMsg) {
+          set({ agentsError: errorMsg });
+        }
       } finally {
-        if (showLoading) {
+        if (showLoading && state.agentsLoading) {
           set({ agentsLoading: false });
         }
       }
@@ -123,14 +139,24 @@ export const useDevOpsStore = create<DevOpsStore>()(
 
     // Refresh tmux sessions from backend
     refreshSessions: async (showLoading = false) => {
-      if (showLoading) {
+      const state = get();
+
+      if (showLoading && !state.sessionsLoading) {
         set({ sessionsLoading: true });
       }
-      set({ sessionsError: null });
+
+      // Only clear error if there is one
+      if (state.sessionsError !== null) {
+        set({ sessionsError: null });
+      }
 
       try {
         const running = await commands.isTmuxRunning();
-        set({ isTmuxRunning: running });
+
+        // Only update if changed
+        if (state.isTmuxRunning !== running) {
+          set({ isTmuxRunning: running });
+        }
 
         if (running) {
           const [sessionResult, recoveredResult] = await Promise.all([
@@ -139,25 +165,36 @@ export const useDevOpsStore = create<DevOpsStore>()(
           ]);
 
           if (sessionResult.status === "ok") {
-            const currentSessions = get().sessions;
+            const currentSessions = state.sessions;
             if (JSON.stringify(currentSessions) !== JSON.stringify(sessionResult.data)) {
               set({ sessions: sessionResult.data });
             }
           }
 
           if (recoveredResult.status === "ok") {
-            const currentRecovered = get().recoveredSessions;
+            const currentRecovered = state.recoveredSessions;
             if (JSON.stringify(currentRecovered) !== JSON.stringify(recoveredResult.data)) {
               set({ recoveredSessions: recoveredResult.data });
             }
           }
+
+          // Clear error if it was set
+          if (state.sessionsError !== null) {
+            set({ sessionsError: null });
+          }
         } else {
-          set({ sessions: [], recoveredSessions: [] });
+          // Only update if not already empty
+          if (state.sessions.length > 0 || state.recoveredSessions.length > 0) {
+            set({ sessions: [], recoveredSessions: [] });
+          }
         }
       } catch (err) {
-        set({ sessionsError: err instanceof Error ? err.message : String(err) });
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        if (state.sessionsError !== errorMsg) {
+          set({ sessionsError: errorMsg });
+        }
       } finally {
-        if (showLoading) {
+        if (showLoading && state.sessionsLoading) {
           set({ sessionsLoading: false });
         }
       }

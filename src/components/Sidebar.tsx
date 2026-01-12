@@ -77,7 +77,7 @@ export const SECTIONS_CONFIG = {
     labelKey: "sidebar.devops",
     icon: Terminal,
     component: DevOpsSettings,
-    enabled: (settings) => settings?.debug_mode ?? false,
+    enabled: () => true,
   },
   advanced: {
     labelKey: "sidebar.advanced",

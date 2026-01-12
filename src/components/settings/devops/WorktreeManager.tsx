@@ -45,9 +45,14 @@ export const WorktreeManager: React.FC<WorktreeManagerProps> = ({
 
     // Try to get repo root from current working directory
     try {
-      const root = await commands.getGitRepoRoot(".");
-      setCurrentRepoPath(root);
-      return root;
+      const result = await commands.getGitRepoRoot(".");
+      if (result.status === "ok") {
+        setCurrentRepoPath(result.data);
+        return result.data;
+      }
+      // Not in a git repo
+      setCurrentRepoPath(null);
+      return null;
     } catch {
       // Not in a git repo
       setCurrentRepoPath(null);
@@ -67,8 +72,12 @@ export const WorktreeManager: React.FC<WorktreeManagerProps> = ({
         return;
       }
 
-      const worktreeList = await commands.listGitWorktrees(detectedPath);
-      setWorktrees(worktreeList);
+      const result = await commands.listGitWorktrees(detectedPath);
+      if (result.status === "ok") {
+        setWorktrees(result.data);
+      } else {
+        setError(result.error);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

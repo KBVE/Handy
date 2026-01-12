@@ -15,8 +15,8 @@
       {
         "label": "main",
         "title": "KBVE",
-        "width": 680,
-        "height": 570,
+        "width": 800,
+        "height": 700,
         "minWidth": 680,
         "minHeight": 570,
         "resizable": true,

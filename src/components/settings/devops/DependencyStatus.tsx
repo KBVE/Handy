@@ -1,13 +1,17 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { DependencyStatus as DependencyStatusType } from "@/bindings";
-import { CheckCircle2, XCircle, Copy, ExternalLink } from "lucide-react";
+import { CheckCircle2, XCircle, Copy } from "lucide-react";
 
 interface DependencyStatusProps {
   name: string;
   displayName: string;
   icon: React.ReactNode;
   status: DependencyStatusType;
+  showToggle?: boolean;
+  isEnabled?: boolean;
+  onToggle?: (enabled: boolean) => void;
+  toggleDisabled?: boolean;
 }
 
 export const DependencyStatus: React.FC<DependencyStatusProps> = ({
@@ -15,6 +19,10 @@ export const DependencyStatus: React.FC<DependencyStatusProps> = ({
   displayName,
   icon,
   status,
+  showToggle = false,
+  isEnabled = false,
+  onToggle,
+  toggleDisabled = false,
 }) => {
   const { t } = useTranslation();
 
@@ -78,6 +86,28 @@ export const DependencyStatus: React.FC<DependencyStatusProps> = ({
           </div>
         )}
       </div>
+
+      {/* Toggle switch for agents */}
+      {showToggle && (
+        <div className="flex items-center">
+          <button
+            onClick={() => onToggle?.(!isEnabled)}
+            disabled={toggleDisabled || !status.installed}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              isEnabled && status.installed
+                ? "bg-logo-primary"
+                : "bg-mid-gray/30"
+            } ${toggleDisabled || !status.installed ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+            title={!status.installed ? t("devops.dependencies.installFirst") : undefined}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                isEnabled && status.installed ? "translate-x-6" : "translate-x-1"
+              }`}
+            />
+          </button>
+        </div>
+      )}
     </div>
   );
 };

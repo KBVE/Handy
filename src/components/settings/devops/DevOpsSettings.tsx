@@ -11,14 +11,15 @@ import { AgentDashboard } from "./AgentDashboard";
 import {
   Terminal,
   GitBranch,
-  GitPullRequest,
-  FolderGit2,
-  CircleDot,
   RefreshCcw,
   Loader2,
   AlertCircle,
   CheckCircle2,
   Bot,
+  Sparkles,
+  Code2,
+  Server,
+  Cpu,
 } from "lucide-react";
 
 export const DevOpsSettings: React.FC = () => {
@@ -26,6 +27,8 @@ export const DevOpsSettings: React.FC = () => {
   const [dependencies, setDependencies] = useState<DevOpsDependencies | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [enabledAgents, setEnabledAgents] = useState<string[]>([]);
+  const [isTogglingAgent, setIsTogglingAgent] = useState<string | null>(null);
 
   const checkDependencies = useCallback(async () => {
     setIsLoading(true);
@@ -40,9 +43,37 @@ export const DevOpsSettings: React.FC = () => {
     }
   }, []);
 
+  const loadEnabledAgents = useCallback(async () => {
+    try {
+      const agents = await commands.getEnabledAgents();
+      setEnabledAgents(agents);
+    } catch (err) {
+      console.error("Failed to load enabled agents:", err);
+    }
+  }, []);
+
   useEffect(() => {
     checkDependencies();
-  }, [checkDependencies]);
+    loadEnabledAgents();
+  }, [checkDependencies, loadEnabledAgents]);
+
+  const handleAgentToggle = async (agentType: string, enabled: boolean) => {
+    setIsTogglingAgent(agentType);
+    try {
+      const result = await commands.toggleAgentEnabled(agentType, enabled);
+      if (result.status === "ok") {
+        setEnabledAgents(result.data);
+      } else {
+        setError(result.error);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsTogglingAgent(null);
+    }
+  };
+
+  const isAgentEnabled = (agentType: string) => enabledAgents.includes(agentType);
 
   return (
     <div className="flex flex-col gap-4">
@@ -107,7 +138,8 @@ export const DevOpsSettings: React.FC = () => {
               )}
             </div>
 
-            {/* Individual dependencies */}
+            {/* Required dependencies */}
+            <div className="text-xs text-mid-gray/70 mb-2 mt-2">{t("devops.dependencies.required")}</div>
             <DependencyStatus
               name="gh"
               displayName="GitHub CLI"
@@ -120,6 +152,69 @@ export const DevOpsSettings: React.FC = () => {
               icon={<Terminal className="w-4 h-4" />}
               status={dependencies.tmux}
             />
+
+            {/* AI Agents (at least one required) */}
+            <div className="text-xs text-mid-gray/70 mb-2 mt-4">{t("devops.dependencies.agents")}</div>
+            <DependencyStatus
+              name="claude"
+              displayName="Claude Code"
+              icon={<Bot className="w-4 h-4" />}
+              status={dependencies.claude}
+              showToggle
+              isEnabled={isAgentEnabled("claude")}
+              onToggle={(enabled) => handleAgentToggle("claude", enabled)}
+              toggleDisabled={isTogglingAgent === "claude"}
+            />
+            <DependencyStatus
+              name="aider"
+              displayName="Aider"
+              icon={<Code2 className="w-4 h-4" />}
+              status={dependencies.aider}
+              showToggle
+              isEnabled={isAgentEnabled("aider")}
+              onToggle={(enabled) => handleAgentToggle("aider", enabled)}
+              toggleDisabled={isTogglingAgent === "aider"}
+            />
+            <DependencyStatus
+              name="gemini"
+              displayName="Gemini"
+              icon={<Sparkles className="w-4 h-4" />}
+              status={dependencies.gemini}
+              showToggle
+              isEnabled={isAgentEnabled("gemini")}
+              onToggle={(enabled) => handleAgentToggle("gemini", enabled)}
+              toggleDisabled={isTogglingAgent === "gemini"}
+            />
+
+            {/* Local LLM Servers */}
+            <div className="text-xs text-mid-gray/70 mb-2 mt-4">{t("devops.dependencies.localLlm")}</div>
+            <DependencyStatus
+              name="ollama"
+              displayName="Ollama"
+              icon={<Server className="w-4 h-4" />}
+              status={dependencies.ollama}
+              showToggle
+              isEnabled={isAgentEnabled("ollama")}
+              onToggle={(enabled) => handleAgentToggle("ollama", enabled)}
+              toggleDisabled={isTogglingAgent === "ollama"}
+            />
+            <DependencyStatus
+              name="vllm"
+              displayName="vLLM"
+              icon={<Cpu className="w-4 h-4" />}
+              status={dependencies.vllm}
+              showToggle
+              isEnabled={isAgentEnabled("vllm")}
+              onToggle={(enabled) => handleAgentToggle("vllm", enabled)}
+              toggleDisabled={isTogglingAgent === "vllm"}
+            />
+
+            {/* Enabled agents summary */}
+            {enabledAgents.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-mid-gray/20 text-xs text-mid-gray">
+                {t("devops.dependencies.enabledAgents")}: {enabledAgents.join(", ")}
+              </div>
+            )}
           </div>
         ) : null}
       </SettingsGroup>

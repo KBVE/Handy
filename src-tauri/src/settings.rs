@@ -323,6 +323,9 @@ pub struct AppSettings {
     // Onichan conversation settings
     #[serde(default = "default_onichan_silence_threshold")]
     pub onichan_silence_threshold: u64,
+    // DevOps agent settings - which agents are enabled
+    #[serde(default = "default_enabled_agents")]
+    pub enabled_agents: Vec<String>,
 }
 
 fn default_model() -> String {
@@ -416,6 +419,12 @@ fn default_active_ui_section() -> String {
 
 fn default_onichan_silence_threshold() -> u64 {
     1500 // 1.5 seconds in milliseconds
+}
+
+fn default_enabled_agents() -> Vec<String> {
+    // Empty by default - agents are enabled when user toggles them on
+    // or auto-enabled when detected for the first time
+    vec![]
 }
 
 fn default_post_process_provider_id() -> String {
@@ -637,6 +646,7 @@ pub fn get_default_settings() -> AppSettings {
         show_filler_overlay: default_show_filler_overlay(),
         active_ui_section: default_active_ui_section(),
         onichan_silence_threshold: default_onichan_silence_threshold(),
+        enabled_agents: default_enabled_agents(),
     }
 }
 

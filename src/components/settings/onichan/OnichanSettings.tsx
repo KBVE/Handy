@@ -203,15 +203,16 @@ export const OnichanSettings: React.FC = () => {
       "transcription-result",
       async (event) => {
         // Get fresh state from backend to avoid stale closure issues
-        const currentSettings = await commands.getAppSettings();
-        const isOnOnichanTab = currentSettings.active_ui_section === "onichan";
+        const settingsResult = await commands.getAppSettings();
+        const currentSettings = settingsResult.status === "ok" ? settingsResult.data : null;
+        const isOnOnichanTab = currentSettings?.active_ui_section === "onichan";
         const onichanActive = await commands.onichanIsActive();
 
         console.log("[Onichan] transcription-result received:", {
           text: event.payload,
           onichanActive,
           isOnOnichanTab,
-          activeSection: currentSettings.active_ui_section,
+          activeSection: currentSettings?.active_ui_section,
         });
 
         if (onichanActive && isOnOnichanTab && event.payload.trim()) {
@@ -648,7 +649,7 @@ export const OnichanSettings: React.FC = () => {
               value={settings?.onichan_silence_threshold ?? 1500}
               onChange={(e) => {
                 const value = parseInt(e.target.value);
-                commands.changeOnichanSilenceThresholdSetting(BigInt(value));
+                commands.changeOnichanSilenceThresholdSetting(value);
               }}
               className="w-full h-2 bg-background-dark rounded-lg appearance-none cursor-pointer accent-logo-primary"
             />

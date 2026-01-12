@@ -1,6 +1,6 @@
 //! Dependency detection for DevOps features.
 //!
-//! Checks for required CLI tools: gh (GitHub CLI) and tmux.
+//! Checks for required CLI tools: gh (GitHub CLI), tmux, and claude (Claude Code CLI).
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -24,12 +24,24 @@ pub struct DependencyStatus {
 /// Status of all DevOps dependencies
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct DevOpsDependencies {
-    /// GitHub CLI status
+    /// GitHub CLI status (required)
     pub gh: DependencyStatus,
-    /// tmux status
+    /// tmux status (required)
     pub tmux: DependencyStatus,
-    /// Whether all required dependencies are installed
+    /// Claude Code CLI status
+    pub claude: DependencyStatus,
+    /// Aider CLI status
+    pub aider: DependencyStatus,
+    /// Gemini CLI status (Google AI)
+    pub gemini: DependencyStatus,
+    /// Ollama status (local LLM server)
+    pub ollama: DependencyStatus,
+    /// vLLM status (high-performance inference)
+    pub vllm: DependencyStatus,
+    /// Whether all required dependencies are installed (gh + tmux + at least one agent)
     pub all_satisfied: bool,
+    /// List of available agent types that are installed
+    pub available_agents: Vec<String>,
 }
 
 /// Check if a command exists and get its version
@@ -102,16 +114,131 @@ fn check_tmux() -> DependencyStatus {
     }
 }
 
+/// Check Claude Code CLI status
+fn check_claude() -> DependencyStatus {
+    let (installed, version, path) = check_command("claude", &["--version"]);
+
+    // Version output format may vary, just use the first line
+    let version = version.map(|v| v.trim().to_string());
+
+    DependencyStatus {
+        name: "claude".to_string(),
+        installed,
+        version,
+        path,
+        install_hint: "npm install -g @anthropic-ai/claude-code".to_string(),
+    }
+}
+
+/// Check Aider CLI status
+fn check_aider() -> DependencyStatus {
+    let (installed, version, path) = check_command("aider", &["--version"]);
+
+    // Parse version from aider output
+    let version = version.map(|v| v.trim().to_string());
+
+    DependencyStatus {
+        name: "aider".to_string(),
+        installed,
+        version,
+        path,
+        install_hint: "pip install aider-chat".to_string(),
+    }
+}
+
+/// Check Gemini CLI status (Google AI Studio)
+fn check_gemini() -> DependencyStatus {
+    let (installed, version, path) = check_command("gemini", &["--version"]);
+
+    let version = version.map(|v| v.trim().to_string());
+
+    DependencyStatus {
+        name: "gemini".to_string(),
+        installed,
+        version,
+        path,
+        install_hint: "pip install google-generativeai".to_string(),
+    }
+}
+
+/// Check Ollama status (local LLM server)
+fn check_ollama() -> DependencyStatus {
+    let (installed, version, path) = check_command("ollama", &["--version"]);
+
+    // Parse version from ollama output
+    let version = version.and_then(|v| {
+        v.split_whitespace()
+            .find(|s| s.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false))
+            .map(|s| s.to_string())
+    });
+
+    DependencyStatus {
+        name: "ollama".to_string(),
+        installed,
+        version,
+        path,
+        install_hint: "brew install ollama".to_string(),
+    }
+}
+
+/// Check vLLM status (high-performance inference server)
+fn check_vllm() -> DependencyStatus {
+    // vLLM is typically run as a server, check for python module
+    let (installed, version, path) = check_command("vllm", &["--version"]);
+
+    let version = version.map(|v| v.trim().to_string());
+
+    DependencyStatus {
+        name: "vllm".to_string(),
+        installed,
+        version,
+        path,
+        install_hint: "pip install vllm".to_string(),
+    }
+}
+
 /// Check all DevOps dependencies
 pub fn check_all_dependencies() -> DevOpsDependencies {
     let gh = check_gh();
     let tmux = check_tmux();
-    let all_satisfied = gh.installed && tmux.installed;
+    let claude = check_claude();
+    let aider = check_aider();
+    let gemini = check_gemini();
+    let ollama = check_ollama();
+    let vllm = check_vllm();
+
+    // Build list of available agents
+    let mut available_agents = Vec::new();
+    if claude.installed {
+        available_agents.push("claude".to_string());
+    }
+    if aider.installed {
+        available_agents.push("aider".to_string());
+    }
+    if gemini.installed {
+        available_agents.push("gemini".to_string());
+    }
+    if ollama.installed {
+        available_agents.push("ollama".to_string());
+    }
+    if vllm.installed {
+        available_agents.push("vllm".to_string());
+    }
+
+    // All satisfied if gh + tmux + at least one agent
+    let has_agent = !available_agents.is_empty();
+    let all_satisfied = gh.installed && tmux.installed && has_agent;
 
     DevOpsDependencies {
         gh,
         tmux,
+        claude,
+        aider,
+        gemini,
+        ollama,
+        vllm,
         all_satisfied,
+        available_agents,
     }
 }
 

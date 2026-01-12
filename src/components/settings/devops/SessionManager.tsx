@@ -39,12 +39,16 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
       setIsTmuxRunning(running);
 
       if (running) {
-        const [sessionList, recovered] = await Promise.all([
+        const [sessionResult, recoveredResult] = await Promise.all([
           commands.listTmuxSessions(),
           commands.recoverTmuxSessions(),
         ]);
-        setSessions(sessionList);
-        setRecoveredSessions(recovered);
+        if (sessionResult.status === "ok") {
+          setSessions(sessionResult.data);
+        }
+        if (recoveredResult.status === "ok") {
+          setRecoveredSessions(recoveredResult.data);
+        }
       } else {
         setSessions([]);
         setRecoveredSessions([]);

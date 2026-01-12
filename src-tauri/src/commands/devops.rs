@@ -11,6 +11,8 @@ use crate::devops::{
     worktree::{self, CollisionCheck, WorktreeConfig, WorktreeCreateResult, WorktreeInfo},
     DevOpsDependencies,
 };
+use crate::settings;
+use tauri::AppHandle;
 
 /// Check if required DevOps dependencies (gh, tmux) are installed.
 #[tauri::command]
@@ -490,4 +492,44 @@ pub fn list_local_agent_statuses() -> Result<Vec<AgentStatus>, String> {
 #[specta::specta]
 pub fn list_remote_agent_statuses() -> Result<Vec<AgentStatus>, String> {
     orchestrator::list_remote_agent_statuses()
+}
+
+/// Toggle an agent type on/off.
+#[tauri::command]
+#[specta::specta]
+pub fn toggle_agent_enabled(app: AppHandle, agent_type: String, enabled: bool) -> Result<Vec<String>, String> {
+    let mut app_settings = settings::get_settings(&app);
+
+    if enabled {
+        // Add to enabled list if not already present
+        if !app_settings.enabled_agents.contains(&agent_type) {
+            app_settings.enabled_agents.push(agent_type);
+        }
+    } else {
+        // Remove from enabled list
+        app_settings.enabled_agents.retain(|a| a != &agent_type);
+    }
+
+    let result = app_settings.enabled_agents.clone();
+    settings::write_settings(&app, app_settings);
+    Ok(result)
+}
+
+/// Get list of enabled agents.
+#[tauri::command]
+#[specta::specta]
+pub fn get_enabled_agents(app: AppHandle) -> Vec<String> {
+    let app_settings = settings::get_settings(&app);
+    app_settings.enabled_agents
+}
+
+/// Set the list of enabled agents (bulk update).
+#[tauri::command]
+#[specta::specta]
+pub fn set_enabled_agents(app: AppHandle, agents: Vec<String>) -> Vec<String> {
+    let mut app_settings = settings::get_settings(&app);
+    app_settings.enabled_agents = agents;
+    let result = app_settings.enabled_agents.clone();
+    settings::write_settings(&app, app_settings);
+    result
 }

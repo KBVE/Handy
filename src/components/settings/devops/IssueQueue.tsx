@@ -74,13 +74,17 @@ export const IssueQueue: React.FC<IssueQueueProps> = ({
         return;
       }
 
-      const issueList = await commands.listGithubIssues(
+      const result = await commands.listGithubIssues(
         activeRepo,
         "open",
         null, // all labels
         50 // limit
       );
-      setIssues(issueList);
+      if (result.status === "ok") {
+        setIssues(result.data);
+      } else {
+        setError(result.error);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

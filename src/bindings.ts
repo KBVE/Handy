@@ -1162,6 +1162,497 @@ async listMemoryUsers() : Promise<Result<MemoryUserInfo[], string>> {
 }
 },
 /**
+ * Check if required DevOps dependencies (gh, tmux) are installed.
+ */
+async checkDevopsDependencies() : Promise<DevOpsDependencies> {
+    return await TAURI_INVOKE("check_devops_dependencies");
+},
+/**
+ * List all Handy agent tmux sessions.
+ */
+async listTmuxSessions() : Promise<Result<TmuxSession[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_tmux_sessions") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Get metadata for a specific tmux session.
+ */
+async getTmuxSessionMetadata(sessionName: string) : Promise<Result<AgentMetadata, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_tmux_session_metadata", { sessionName }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Create a new tmux session with metadata.
+ */
+async createTmuxSession(sessionName: string, workingDir: string | null, issueRef: string | null, repo: string | null, agentType: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("create_tmux_session", { sessionName, workingDir, issueRef, repo, agentType }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Kill a tmux session.
+ */
+async killTmuxSession(sessionName: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("kill_tmux_session", { sessionName }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Get recent output from a tmux session.
+ */
+async getTmuxSessionOutput(sessionName: string, lines: number | null) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_tmux_session_output", { sessionName, lines }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Send a command to a tmux session.
+ */
+async sendTmuxCommand(sessionName: string, command: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("send_tmux_command", { sessionName, command }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Recover agent sessions on startup.
+ */
+async recoverTmuxSessions() : Promise<Result<RecoveredSession[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("recover_tmux_sessions") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Check if tmux server is running.
+ */
+async isTmuxRunning() : Promise<boolean> {
+    return await TAURI_INVOKE("is_tmux_running");
+},
+/**
+ * List all git worktrees in a repository.
+ */
+async listGitWorktrees(repoPath: string) : Promise<Result<WorktreeInfo[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_git_worktrees", { repoPath }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Get information about a specific worktree.
+ */
+async getGitWorktreeInfo(repoPath: string, worktreePath: string) : Promise<Result<WorktreeInfo, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_git_worktree_info", { repoPath, worktreePath }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Check for collisions before creating a worktree.
+ */
+async checkWorktreeCollision(repoPath: string, worktreePath: string, branchName: string) : Promise<Result<CollisionCheck, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("check_worktree_collision", { repoPath, worktreePath, branchName }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Create a new git worktree with a new branch.
+ */
+async createGitWorktree(repoPath: string, name: string, prefix: string | null, basePath: string | null, baseBranch: string | null) : Promise<Result<WorktreeCreateResult, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("create_git_worktree", { repoPath, name, prefix, basePath, baseBranch }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Create a worktree using an existing branch.
+ */
+async createGitWorktreeExistingBranch(repoPath: string, branchName: string, prefix: string | null, basePath: string | null) : Promise<Result<WorktreeCreateResult, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("create_git_worktree_existing_branch", { repoPath, branchName, prefix, basePath }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Remove a git worktree.
+ */
+async removeGitWorktree(repoPath: string, worktreePath: string, force: boolean, deleteBranch: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("remove_git_worktree", { repoPath, worktreePath, force, deleteBranch }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Prune stale worktree entries.
+ */
+async pruneGitWorktrees(repoPath: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("prune_git_worktrees", { repoPath }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Get the root directory of a git repository.
+ */
+async getGitRepoRoot(path: string) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_git_repo_root", { path }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Get the default branch of a repository.
+ */
+async getGitDefaultBranch(repoPath: string) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_git_default_branch", { repoPath }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Check GitHub CLI authentication status.
+ */
+async checkGhAuth() : Promise<GhAuthStatus> {
+    return await TAURI_INVOKE("check_gh_auth");
+},
+/**
+ * List issues from a GitHub repository.
+ */
+async listGithubIssues(repo: string, state: string | null, labels: string[] | null, limit: number | null) : Promise<Result<GitHubIssue[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_github_issues", { repo, state, labels, limit }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Get details of a specific GitHub issue.
+ */
+async getGithubIssue(repo: string, number: number) : Promise<Result<GitHubIssue, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_github_issue", { repo, number }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Get issue with agent metadata.
+ */
+async getGithubIssueWithAgent(repo: string, number: number) : Promise<Result<IssueWithAgent, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_github_issue_with_agent", { repo, number }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Create a new GitHub issue.
+ */
+async createGithubIssue(repo: string, title: string, body: string | null, labels: string[] | null) : Promise<Result<GitHubIssue, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("create_github_issue", { repo, title, body, labels }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Add a comment to a GitHub issue.
+ */
+async commentOnGithubIssue(repo: string, number: number, body: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("comment_on_github_issue", { repo, number, body }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Assign an agent to a GitHub issue (adds metadata comment).
+ */
+async assignAgentToIssue(repo: string, number: number, session: string, agentType: string, worktree: string | null) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("assign_agent_to_issue", { repo, number, session, agentType, worktree }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * List comments on a GitHub issue.
+ */
+async listGithubIssueComments(repo: string, number: number) : Promise<Result<GitHubComment[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_github_issue_comments", { repo, number }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Update labels on a GitHub issue.
+ */
+async updateGithubIssueLabels(repo: string, number: number, addLabels: string[], removeLabels: string[]) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_github_issue_labels", { repo, number, addLabels, removeLabels }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Close a GitHub issue.
+ */
+async closeGithubIssue(repo: string, number: number, comment: string | null) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("close_github_issue", { repo, number, comment }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Reopen a closed GitHub issue.
+ */
+async reopenGithubIssue(repo: string, number: number) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("reopen_github_issue", { repo, number }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * List pull requests from a GitHub repository.
+ */
+async listGithubPrs(repo: string, state: string | null, base: string | null, limit: number | null) : Promise<Result<GitHubPullRequest[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_github_prs", { repo, state, base, limit }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Get details of a specific GitHub pull request.
+ */
+async getGithubPr(repo: string, number: number) : Promise<Result<GitHubPullRequest, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_github_pr", { repo, number }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Get full status of a pull request (PR + checks + reviews).
+ */
+async getGithubPrStatus(repo: string, number: number) : Promise<Result<PrStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_github_pr_status", { repo, number }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Create a new GitHub pull request.
+ */
+async createGithubPr(repo: string, title: string, body: string | null, base: string, head: string | null, draft: boolean) : Promise<Result<GitHubPullRequest, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("create_github_pr", { repo, title, body, base, head, draft }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Merge a GitHub pull request.
+ */
+async mergeGithubPr(repo: string, number: number, method: string | null, deleteBranch: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("merge_github_pr", { repo, number, method, deleteBranch }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Close a GitHub pull request without merging.
+ */
+async closeGithubPr(repo: string, number: number, comment: string | null) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("close_github_pr", { repo, number, comment }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Spawn a new agent to work on an issue.
+ * 
+ * Creates a worktree, tmux session, and updates the issue with metadata.
+ */
+async spawnAgent(repo: string, issueNumber: number, agentType: string, repoPath: string, sessionName: string | null, worktreePrefix: string | null, workingLabels: string[] | null) : Promise<Result<SpawnResult, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("spawn_agent", { repo, issueNumber, agentType, repoPath, sessionName, worktreePrefix, workingLabels }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Get status of all active agents.
+ */
+async listAgentStatuses() : Promise<Result<AgentStatus[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_agent_statuses") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Clean up an agent's resources after work is complete.
+ */
+async cleanupAgent(sessionName: string, repoPath: string, removeWorktree: boolean, deleteBranch: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("cleanup_agent", { sessionName, repoPath, removeWorktree, deleteBranch }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Create a PR from an agent's work.
+ */
+async createPrFromAgent(sessionName: string, title: string, body: string | null, draft: boolean) : Promise<Result<GitHubPullRequest, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("create_pr_from_agent", { sessionName, title, body, draft }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Complete an agent's work with workflow automation.
+ * 
+ * Creates PR, updates issue with link, manages labels.
+ */
+async completeAgentWork(sessionName: string, prTitle: string, prBody: string | null, workingLabels: string[], prLabels: string[], draftPr: boolean) : Promise<Result<CompleteWorkResult, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("complete_agent_work", { sessionName, prTitle, prBody, workingLabels, prLabels, draftPr }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Check if a PR has been merged and cleanup resources if so.
+ */
+async checkAndCleanupMergedPr(sessionName: string, repoPath: string, prNumber: number) : Promise<Result<boolean, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("check_and_cleanup_merged_pr", { sessionName, repoPath, prNumber }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Get current machine identifier.
+ */
+async getCurrentMachineId() : Promise<string> {
+    return await TAURI_INVOKE("get_current_machine_id");
+},
+/**
+ * List only agents running on this machine.
+ */
+async listLocalAgentStatuses() : Promise<Result<AgentStatus[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_local_agent_statuses") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * List agents from other machines (potentially orphaned).
+ */
+async listRemoteAgentStatuses() : Promise<Result<AgentStatus[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_remote_agent_statuses") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Toggle an agent type on/off.
+ */
+async toggleAgentEnabled(agentType: string, enabled: boolean) : Promise<Result<string[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("toggle_agent_enabled", { agentType, enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Get list of enabled agents.
+ */
+async getEnabledAgents() : Promise<string[]> {
+    return await TAURI_INVOKE("get_enabled_agents");
+},
+/**
+ * Set the list of enabled agents (bulk update).
+ */
+async setEnabledAgents(agents: string[]) : Promise<string[]> {
+    return await TAURI_INVOKE("set_enabled_agents", { agents });
+},
+/**
  * Checks if the Mac is a laptop by detecting battery presence
  * 
  * This uses pmset to check for battery information.
@@ -1204,17 +1695,197 @@ async downloadVadModelIfNeeded() : Promise<Result<string, string>> {
 
 /** user-defined types **/
 
-export type AppSettings = { bindings: Partial<{ [key in string]: ShortcutBinding }>; push_to_talk: boolean; audio_feedback: boolean; audio_feedback_volume?: number; sound_theme?: SoundTheme; start_hidden?: boolean; autostart_enabled?: boolean; update_checks_enabled?: boolean; selected_model?: string; always_on_microphone?: boolean; selected_microphone?: string | null; clamshell_microphone?: string | null; selected_output_device?: string | null; translate_to_english?: boolean; selected_language?: string; overlay_position?: OverlayPosition; debug_mode?: boolean; log_level?: LogLevel; custom_words?: string[]; model_unload_timeout?: ModelUnloadTimeout; word_correction_threshold?: number; history_limit?: number; recording_retention_period?: RecordingRetentionPeriod; paste_method?: PasteMethod; clipboard_handling?: ClipboardHandling; post_process_enabled?: boolean; post_process_provider_id?: string; post_process_providers?: PostProcessProvider[]; post_process_api_keys?: Partial<{ [key in string]: string }>; post_process_models?: Partial<{ [key in string]: string }>; post_process_prompts?: LLMPrompt[]; post_process_selected_prompt_id?: string | null; mute_while_recording?: boolean; append_trailing_space?: boolean; app_language?: string; filler_detection_enabled?: boolean; filler_output_mode?: FillerOutputMode; custom_filler_words?: string[]; show_filler_overlay?: boolean; active_ui_section?: string; onichan_silence_threshold?: number }
+/**
+ * Metadata stored with each agent session
+ */
+export type AgentMetadata = { 
+/**
+ * Session name (e.g., "handy-agent-42")
+ */
+session: string; 
+/**
+ * GitHub issue reference (e.g., "org/repo#42")
+ */
+issue_ref: string | null; 
+/**
+ * Repository being worked on
+ */
+repo: string | null; 
+/**
+ * Path to the worktree
+ */
+worktree: string | null; 
+/**
+ * Type of agent (e.g., "claude", "aider")
+ */
+agent_type: string; 
+/**
+ * Machine identifier for multi-machine disambiguation
+ */
+machine_id: string; 
+/**
+ * ISO timestamp when session started
+ */
+started_at: string }
+/**
+ * Status of an active agent.
+ */
+export type AgentStatus = { 
+/**
+ * Session name
+ */
+session: string; 
+/**
+ * Issue reference (owner/repo#number)
+ */
+issue_ref: string | null; 
+/**
+ * Repository
+ */
+repo: string | null; 
+/**
+ * Issue number
+ */
+issue_number: number | null; 
+/**
+ * Worktree path
+ */
+worktree: string | null; 
+/**
+ * Agent type
+ */
+agent_type: string; 
+/**
+ * Machine ID
+ */
+machine_id: string; 
+/**
+ * Started timestamp
+ */
+started_at: string; 
+/**
+ * Whether session is attached
+ */
+is_attached: boolean; 
+/**
+ * Whether this agent is on the current machine
+ */
+is_local: boolean }
+export type AppSettings = { bindings: Partial<{ [key in string]: ShortcutBinding }>; push_to_talk: boolean; audio_feedback: boolean; audio_feedback_volume?: number; sound_theme?: SoundTheme; start_hidden?: boolean; autostart_enabled?: boolean; update_checks_enabled?: boolean; selected_model?: string; always_on_microphone?: boolean; selected_microphone?: string | null; clamshell_microphone?: string | null; selected_output_device?: string | null; translate_to_english?: boolean; selected_language?: string; overlay_position?: OverlayPosition; debug_mode?: boolean; log_level?: LogLevel; custom_words?: string[]; model_unload_timeout?: ModelUnloadTimeout; word_correction_threshold?: number; history_limit?: number; recording_retention_period?: RecordingRetentionPeriod; paste_method?: PasteMethod; clipboard_handling?: ClipboardHandling; post_process_enabled?: boolean; post_process_provider_id?: string; post_process_providers?: PostProcessProvider[]; post_process_api_keys?: Partial<{ [key in string]: string }>; post_process_models?: Partial<{ [key in string]: string }>; post_process_prompts?: LLMPrompt[]; post_process_selected_prompt_id?: string | null; mute_while_recording?: boolean; append_trailing_space?: boolean; app_language?: string; filler_detection_enabled?: boolean; filler_output_mode?: FillerOutputMode; custom_filler_words?: string[]; show_filler_overlay?: boolean; active_ui_section?: string; onichan_silence_threshold?: number; enabled_agents?: string[] }
 export type AudioDevice = { index: string; name: string; is_default: boolean }
 export type AuthUser = { id: string; email: string | null; name: string | null; avatar_url: string | null; provider: string | null; is_authenticated: boolean }
 export type BindingResponse = { success: boolean; binding: ShortcutBinding | null; error: string | null }
 export type ChannelInfo = { id: string; name: string; kind: string }
 export type ClipboardHandling = "dont_modify" | "copy_to_clipboard"
 /**
+ * Collision check result.
+ */
+export type CollisionCheck = { 
+/**
+ * Whether any collision was detected
+ */
+has_collision: boolean; 
+/**
+ * Path collision: directory already exists
+ */
+path_exists: boolean; 
+/**
+ * Branch collision: branch already exists
+ */
+branch_exists: boolean; 
+/**
+ * Worktree collision: worktree at path already exists
+ */
+worktree_exists: boolean; 
+/**
+ * Details about the collision
+ */
+details: string | null }
+/**
+ * Result of completing agent work.
+ */
+export type CompleteWorkResult = { 
+/**
+ * The created pull request
+ */
+pull_request: GitHubPullRequest; 
+/**
+ * Whether the issue was updated with PR link
+ */
+issue_updated: boolean; 
+/**
+ * Whether working labels were removed
+ */
+labels_updated: boolean }
+/**
  * Message in the conversation
  */
 export type ConversationMessage = { role: string; content: string }
 export type CustomSounds = { start: boolean; stop: boolean }
+/**
+ * Status of a single dependency
+ */
+export type DependencyStatus = { 
+/**
+ * Name of the dependency
+ */
+name: string; 
+/**
+ * Whether the dependency is installed
+ */
+installed: boolean; 
+/**
+ * Version string if installed
+ */
+version: string | null; 
+/**
+ * Path to the executable if installed
+ */
+path: string | null; 
+/**
+ * Installation instructions if not installed
+ */
+install_hint: string }
+/**
+ * Status of all DevOps dependencies
+ */
+export type DevOpsDependencies = { 
+/**
+ * GitHub CLI status (required)
+ */
+gh: DependencyStatus; 
+/**
+ * tmux status (required)
+ */
+tmux: DependencyStatus; 
+/**
+ * Claude Code CLI status
+ */
+claude: DependencyStatus; 
+/**
+ * Aider CLI status
+ */
+aider: DependencyStatus; 
+/**
+ * Gemini CLI status (Google AI)
+ */
+gemini: DependencyStatus; 
+/**
+ * Ollama status (local LLM server)
+ */
+ollama: DependencyStatus; 
+/**
+ * vLLM status (high-performance inference)
+ */
+vllm: DependencyStatus; 
+/**
+ * Whether all required dependencies are installed (gh + tmux + at least one agent)
+ */
+all_satisfied: boolean; 
+/**
+ * List of available agent types that are installed
+ */
+available_agents: string[] }
 /**
  * Discord state for frontend
  */
@@ -1244,8 +1915,196 @@ export type FillerOutputMode =
  * Remove filler words, paste cleaned text, and show coaching feedback
  */
 "both"
+/**
+ * GitHub authentication status.
+ */
+export type GhAuthStatus = { 
+/**
+ * Whether the user is authenticated
+ */
+authenticated: boolean; 
+/**
+ * Username if authenticated
+ */
+username: string | null; 
+/**
+ * Scopes available
+ */
+scopes: string[]; 
+/**
+ * Error message if not authenticated
+ */
+error: string | null }
+/**
+ * A GitHub issue comment.
+ */
+export type GitHubComment = { 
+/**
+ * Comment ID
+ */
+id: number; 
+/**
+ * Comment body
+ */
+body: string; 
+/**
+ * Author username
+ */
+author: string; 
+/**
+ * Created timestamp
+ */
+created_at: string }
+/**
+ * A GitHub issue.
+ */
+export type GitHubIssue = { 
+/**
+ * Issue number
+ */
+number: number; 
+/**
+ * Issue title
+ */
+title: string; 
+/**
+ * Issue body/description
+ */
+body: string | null; 
+/**
+ * Issue state (open, closed)
+ */
+state: string; 
+/**
+ * Issue URL
+ */
+url: string; 
+/**
+ * Labels on the issue
+ */
+labels: string[]; 
+/**
+ * Assignees
+ */
+assignees: string[]; 
+/**
+ * Author username
+ */
+author: string; 
+/**
+ * Created timestamp
+ */
+created_at: string; 
+/**
+ * Updated timestamp
+ */
+updated_at: string; 
+/**
+ * Repository in owner/repo format
+ */
+repo: string }
+/**
+ * A GitHub Pull Request.
+ */
+export type GitHubPullRequest = { 
+/**
+ * PR number
+ */
+number: number; 
+/**
+ * PR title
+ */
+title: string; 
+/**
+ * PR body/description
+ */
+body: string | null; 
+/**
+ * PR state (open, closed, merged)
+ */
+state: string; 
+/**
+ * PR URL
+ */
+url: string; 
+/**
+ * Source branch
+ */
+head_branch: string; 
+/**
+ * Target branch
+ */
+base_branch: string; 
+/**
+ * Is the PR a draft
+ */
+is_draft: boolean; 
+/**
+ * Is the PR mergeable
+ */
+mergeable: boolean | null; 
+/**
+ * Labels on the PR
+ */
+labels: string[]; 
+/**
+ * Author username
+ */
+author: string; 
+/**
+ * Created timestamp
+ */
+created_at: string; 
+/**
+ * Updated timestamp
+ */
+updated_at: string; 
+/**
+ * Repository in owner/repo format
+ */
+repo: string }
 export type GuildInfo = { id: string; name: string }
 export type HistoryEntry = { id: number; file_name: string; timestamp: number; saved: boolean; title: string; transcription_text: string; post_processed_text: string | null; post_process_prompt: string | null }
+/**
+ * Agent metadata stored in issue comments.
+ */
+export type IssueAgentMetadata = { 
+/**
+ * Session name
+ */
+session: string; 
+/**
+ * Machine ID
+ */
+machine_id: string; 
+/**
+ * Worktree path
+ */
+worktree: string | null; 
+/**
+ * Agent type
+ */
+agent_type: string; 
+/**
+ * Started timestamp
+ */
+started_at: string; 
+/**
+ * Current status
+ */
+status: string }
+/**
+ * Parsed issue with agent metadata.
+ */
+export type IssueWithAgent = { 
+/**
+ * The issue
+ */
+issue: GitHubIssue; 
+/**
+ * Agent metadata if assigned
+ */
+agent: IssueAgentMetadata | null }
 export type LLMPrompt = { id: string; name: string; prompt: string }
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error"
 /**
@@ -1290,9 +2149,141 @@ export type OnichanModelType = "Llm" | "Tts"
 export type OverlayPosition = "none" | "top" | "bottom"
 export type PasteMethod = "ctrl_v" | "direct" | "none" | "shift_insert" | "ctrl_shift_v"
 export type PostProcessProvider = { id: string; label: string; base_url: string; allow_base_url_edit?: boolean; models_endpoint?: string | null }
+/**
+ * PR check status.
+ */
+export type PrCheckStatus = { 
+/**
+ * Overall status (pending, success, failure)
+ */
+state: string; 
+/**
+ * Number of passing checks
+ */
+passing: number; 
+/**
+ * Number of failing checks
+ */
+failing: number; 
+/**
+ * Number of pending checks
+ */
+pending: number; 
+/**
+ * Total number of checks
+ */
+total: number }
+/**
+ * PR review status.
+ */
+export type PrReviewStatus = { 
+/**
+ * Number of approvals
+ */
+approved: number; 
+/**
+ * Number of changes requested
+ */
+changes_requested: number; 
+/**
+ * Number of reviews pending
+ */
+pending: number }
+/**
+ * Full PR status including checks and reviews.
+ */
+export type PrStatus = { 
+/**
+ * The PR
+ */
+pr: GitHubPullRequest; 
+/**
+ * Check status
+ */
+checks: PrCheckStatus; 
+/**
+ * Review status
+ */
+reviews: PrReviewStatus }
 export type RecordingRetentionPeriod = "never" | "preserve_limit" | "days_3" | "weeks_2" | "months_3"
+/**
+ * A session recovered during startup
+ */
+export type RecoveredSession = { metadata: AgentMetadata; source: RecoverySource; tmux_alive: boolean; worktree_exists: boolean; recommended_action: RecoveryAction }
+/**
+ * Recommended action for a recovered session
+ */
+export type RecoveryAction = 
+/**
+ * tmux alive, continue monitoring
+ */
+"Resume" | 
+/**
+ * tmux dead but work incomplete, offer restart
+ */
+"Restart" | 
+/**
+ * orphan session, offer to kill/remove
+ */
+"Cleanup" | 
+/**
+ * completed normally, nothing to do
+ */
+"None"
+/**
+ * Source of recovered session information
+ */
+export type RecoverySource = 
+/**
+ * Found in tmux, normal operation
+ */
+"Tmux" | 
+/**
+ * Recovered from GitHub issue comment
+ */
+"GitHubIssue" | 
+/**
+ * Confirmed by both sources
+ */
+"Both"
+/**
+ * Status of an agent session
+ */
+export type SessionStatus = 
+/**
+ * Session is running and agent is active
+ */
+"Running" | 
+/**
+ * Session exists but agent process has exited
+ */
+"Stopped" | 
+/**
+ * Session was recovered from metadata (tmux or GitHub)
+ */
+"Recovered"
 export type ShortcutBinding = { id: string; name: string; description: string; default_binding: string; current_binding: string }
 export type SoundTheme = "marimba" | "pop" | "custom"
+/**
+ * Result of spawning an agent.
+ */
+export type SpawnResult = { 
+/**
+ * The issue being worked on
+ */
+issue: GitHubIssue; 
+/**
+ * The created worktree
+ */
+worktree: WorktreeCreateResult; 
+/**
+ * The tmux session name
+ */
+session_name: string; 
+/**
+ * Machine ID where agent is running
+ */
+machine_id: string }
 export type SupabaseSession = { access_token: string; refresh_token: string; expires_at: number; user_id: string; email: string | null; 
 /**
  * User's display name from OAuth provider
@@ -1306,6 +2297,78 @@ avatar_url: string | null;
  * OAuth provider used (github, discord, twitch)
  */
 provider: string | null }
+/**
+ * Information about a tmux session
+ */
+export type TmuxSession = { 
+/**
+ * Session name
+ */
+name: string; 
+/**
+ * Whether the session is attached
+ */
+attached: boolean; 
+/**
+ * Number of windows in the session
+ */
+windows: number; 
+/**
+ * Session creation time (Unix timestamp)
+ */
+created: number; 
+/**
+ * Agent metadata if this is a Handy session
+ */
+metadata: AgentMetadata | null; 
+/**
+ * Current status
+ */
+status: SessionStatus }
+/**
+ * Result of a worktree creation attempt.
+ */
+export type WorktreeCreateResult = { 
+/**
+ * Path to the created worktree
+ */
+path: string; 
+/**
+ * Branch name
+ */
+branch: string; 
+/**
+ * Whether a new branch was created
+ */
+branch_created: boolean }
+/**
+ * Information about a git worktree.
+ */
+export type WorktreeInfo = { 
+/**
+ * Absolute path to the worktree
+ */
+path: string; 
+/**
+ * Branch name checked out in this worktree
+ */
+branch: string | null; 
+/**
+ * Commit SHA of HEAD
+ */
+head: string; 
+/**
+ * Whether this is the main worktree
+ */
+is_main: boolean; 
+/**
+ * Whether the worktree is locked
+ */
+is_locked: boolean; 
+/**
+ * Whether the worktree is prunable (missing)
+ */
+is_prunable: boolean }
 
 /** tauri-specta globals **/
 

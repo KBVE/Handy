@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
-import { commands, OnichanModelInfo } from "@/bindings";
+import { commands, OnichanModelInfo, GuildInfo, ChannelInfo } from "@/bindings";
 import { SettingsGroup } from "../../ui/SettingsGroup";
 import { useSidecarStore } from "@/stores/sidecarStore";
 import {
@@ -33,16 +33,7 @@ interface DiscordState {
   error: string | null;
 }
 
-interface DiscordGuild {
-  id: string;
-  name: string;
-}
-
-interface DiscordChannel {
-  id: string;
-  name: string;
-  guild_id: string;
-}
+// Using GuildInfo and ChannelInfo from bindings
 
 interface DownloadProgress {
   model_id: string;
@@ -63,8 +54,8 @@ export const DiscordSettings: React.FC = () => {
   const [isInVoice, setIsInVoice] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [guilds, setGuilds] = useState<DiscordGuild[]>([]);
-  const [channels, setChannels] = useState<DiscordChannel[]>([]);
+  const [guilds, setGuilds] = useState<GuildInfo[]>([]);
+  const [channels, setChannels] = useState<ChannelInfo[]>([]);
   const [selectedGuild, setSelectedGuild] = useState<string | null>(null);
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
   const [connectedGuild, setConnectedGuild] = useState<string | null>(null);

@@ -42,8 +42,12 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
     setIsLoading(true);
     setError(null);
     try {
-      const statuses = await commands.listAgentStatuses();
-      setAgents(statuses);
+      const result = await commands.listAgentStatuses();
+      if (result.status === "ok") {
+        setAgents(result.data);
+      } else {
+        setError(result.error);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -103,8 +107,16 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
     setCleaningUp(agent.session);
     try {
       // Get repo root from worktree path
-      const repoRoot = await commands.getGitRepoRoot(agent.worktree);
-      await commands.cleanupAgent(agent.session, repoRoot, removeWorktree, removeWorktree);
+      const repoRootResult = await commands.getGitRepoRoot(agent.worktree);
+      if (repoRootResult.status === "error") {
+        setError(repoRootResult.error);
+        return;
+      }
+      const cleanupResult = await commands.cleanupAgent(agent.session, repoRootResult.data, removeWorktree, removeWorktree);
+      if (cleanupResult.status === "error") {
+        setError(cleanupResult.error);
+        return;
+      }
       await loadAgents();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -122,8 +134,6 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
       return dateStr;
     }
   };
-
-  const currentMachineId = typeof window !== "undefined" ? window.navigator.userAgent.slice(0, 20) : "unknown";
 
   if (isLoading && agents.length === 0) {
     return (

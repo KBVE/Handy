@@ -21,7 +21,7 @@ const ENV_STARTED_AT: &str = "HANDY_STARTED_AT";
 
 /// Status of an agent session
 #[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq)]
-pub enum AgentStatus {
+pub enum SessionStatus {
     /// Session is running and agent is active
     Running,
     /// Session exists but agent process has exited
@@ -63,7 +63,7 @@ pub struct TmuxSession {
     /// Agent metadata if this is a Handy session
     pub metadata: Option<AgentMetadata>,
     /// Current status
-    pub status: AgentStatus,
+    pub status: SessionStatus,
 }
 
 /// Source of recovered session information
@@ -160,9 +160,9 @@ pub fn list_sessions() -> Result<Vec<TmuxSession>, String> {
             if name.starts_with(SESSION_PREFIX) {
                 let metadata = get_session_metadata(&name).ok();
                 let status = if check_session_has_active_process(&name) {
-                    AgentStatus::Running
+                    SessionStatus::Running
                 } else {
-                    AgentStatus::Stopped
+                    SessionStatus::Stopped
                 };
 
                 sessions.push(TmuxSession {
@@ -398,7 +398,7 @@ pub fn recover_sessions() -> Result<Vec<RecoveredSession>, String> {
                 .map(|p| std::path::Path::new(p).exists())
                 .unwrap_or(false);
 
-            let tmux_alive = session.status == AgentStatus::Running;
+            let tmux_alive = session.status == SessionStatus::Running;
 
             let recommended_action = match (tmux_alive, worktree_exists) {
                 (true, _) => RecoveryAction::Resume,

@@ -829,7 +829,13 @@
       "path": "Path",
       "unknown": "unknown",
       "notInstalled": "Not installed. Run the command below to install:",
-      "copyCommand": "Copy install command"
+      "copyCommand": "Copy install command",
+      "required": "Required",
+      "agents": "AI Coding Agents (at least one required)",
+      "localLlm": "Local LLM Servers (optional)",
+      "availableAgents": "Available agents",
+      "enabledAgents": "Enabled agents",
+      "installFirst": "Install this tool first to enable it"
     },
     "sessions": {
       "title": "Agent Sessions",

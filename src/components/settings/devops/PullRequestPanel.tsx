@@ -71,13 +71,17 @@ export const PullRequestPanel: React.FC<PullRequestPanelProps> = ({
         return;
       }
 
-      const prList = await commands.listGithubPrs(
+      const result = await commands.listGithubPrs(
         activeRepo,
         "open",
         null, // all base branches
         50 // limit
       );
-      setPrs(prList);
+      if (result.status === "ok") {
+        setPrs(result.data);
+      } else {
+        setError(result.error);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -88,8 +92,10 @@ export const PullRequestPanel: React.FC<PullRequestPanelProps> = ({
   const loadPrStatus = useCallback(async (prNumber: number) => {
     if (!activeRepo) return;
     try {
-      const status = await commands.getGithubPrStatus(activeRepo, prNumber);
-      setPrStatuses(prev => ({ ...prev, [prNumber]: status }));
+      const result = await commands.getGithubPrStatus(activeRepo, prNumber);
+      if (result.status === "ok") {
+        setPrStatuses(prev => ({ ...prev, [prNumber]: result.data }));
+      }
     } catch (err) {
       console.error("Failed to load PR status:", err);
     }

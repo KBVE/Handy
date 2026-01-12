@@ -33,8 +33,10 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [killingSession, setKillingSession] = useState<string | null>(null);
 
-  const loadSessions = useCallback(async () => {
-    setIsLoading(true);
+  const loadSessions = useCallback(async (showLoading = false) => {
+    if (showLoading) {
+      setIsLoading(true);
+    }
     setError(null);
     try {
       const running = await commands.isTmuxRunning();
@@ -58,14 +60,17 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setIsLoading(false);
+      if (showLoading) {
+        setIsLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    loadSessions();
+    loadSessions(true); // Show loading on initial load
     // Refresh every 10 seconds
-    const interval = setInterval(loadSessions, 10000);
+    // Don't show loading spinner on auto-refresh to prevent flickering
+    const interval = setInterval(() => loadSessions(false), 10000);
     return () => clearInterval(interval);
   }, [loadSessions]);
 
@@ -73,7 +78,7 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
     setKillingSession(sessionName);
     try {
       await commands.killTmuxSession(sessionName);
-      await loadSessions();
+      await loadSessions(false);
       onSessionsChange?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -161,7 +166,7 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
           {t("devops.sessions.activeCount", { count: sessions.length })}
         </span>
         <button
-          onClick={loadSessions}
+          onClick={() => loadSessions(true)}
           disabled={isLoading}
           className="p-1 hover:bg-mid-gray/20 rounded transition-colors"
           title={t("devops.refresh")}

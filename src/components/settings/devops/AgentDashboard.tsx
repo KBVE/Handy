@@ -40,8 +40,10 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
   );
   const [currentMachineId, setCurrentMachineId] = useState<string>("");
 
-  const loadAgents = useCallback(async () => {
-    setIsLoading(true);
+  const loadAgents = useCallback(async (showLoading = false) => {
+    if (showLoading) {
+      setIsLoading(true);
+    }
     setError(null);
     try {
       const result = await commands.listAgentStatuses();
@@ -53,19 +55,22 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setIsLoading(false);
+      if (showLoading) {
+        setIsLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    loadAgents();
+    loadAgents(true); // Show loading on initial load
     // Load current machine ID
     commands
       .getCurrentMachineId()
       .then(setCurrentMachineId)
       .catch(() => {});
     // Refresh every 12 seconds (staggered from SessionManager's 10s to avoid simultaneous updates)
-    const interval = setInterval(loadAgents, 12000);
+    // Don't show loading spinner on auto-refresh to prevent flickering
+    const interval = setInterval(() => loadAgents(false), 12000);
     return () => clearInterval(interval);
   }, [loadAgents]);
 
@@ -88,7 +93,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
         ["needs-review"], // Labels to add
         false, // Not draft
       );
-      await loadAgents();
+      await loadAgents(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -127,7 +132,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
         setError(cleanupResult.error);
         return;
       }
-      await loadAgents();
+      await loadAgents(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -223,7 +228,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
             </button>
           </div>
           <button
-            onClick={loadAgents}
+            onClick={() => loadAgents(true)}
             disabled={isLoading}
             className="p-1 hover:bg-mid-gray/20 rounded transition-colors"
             title={t("devops.refresh")}

@@ -6,6 +6,7 @@ pub mod audio_toolkit;
 mod auth_server;
 mod clipboard;
 mod commands;
+mod devops;
 mod discord;
 pub mod discord_conversation;
 pub mod filler_detector;
@@ -15,11 +16,11 @@ pub mod live_coaching;
 mod llm_client;
 mod local_llm;
 mod local_tts;
+mod managers;
 mod memory;
 pub mod onichan;
 pub mod onichan_conversation;
 pub mod onichan_models;
-mod managers;
 mod overlay;
 mod settings;
 mod shortcut;
@@ -37,11 +38,11 @@ use env_filter::Builder as EnvFilterBuilder;
 use live_coaching::LiveCoachingManager;
 use local_llm::LocalLlmManager;
 use local_tts::LocalTtsManager;
-use memory::MemoryManager;
 use managers::audio::AudioRecordingManager;
 use managers::history::HistoryManager;
 use managers::model::ModelManager;
 use managers::transcription::TranscriptionManager;
+use memory::MemoryManager;
 use onichan::OnichanManager;
 use onichan_models::OnichanModelManager;
 #[cfg(unix)]
@@ -247,11 +248,12 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     onichan_manager.set_memory_manager(memory_manager.clone());
 
     // Initialize Onichan conversation manager for continuous listening mode
-    let onichan_conversation_manager = Arc::new(onichan_conversation::OnichanConversationManager::new(
-        app_handle,
-        transcription_manager.clone(),
-        onichan_manager.clone(),
-    ));
+    let onichan_conversation_manager =
+        Arc::new(onichan_conversation::OnichanConversationManager::new(
+            app_handle,
+            transcription_manager.clone(),
+            onichan_manager.clone(),
+        ));
 
     // Initialize Discord conversation manager for Discord voice integration
     let discord_conversation_manager = Arc::new(DiscordConversationManager::new(
@@ -531,6 +533,50 @@ pub fn run() {
         commands::memory::stop_memory_sidecar,
         commands::memory::browse_recent_memories,
         commands::memory::list_memory_users,
+        commands::devops::check_devops_dependencies,
+        commands::devops::list_tmux_sessions,
+        commands::devops::get_tmux_session_metadata,
+        commands::devops::create_tmux_session,
+        commands::devops::kill_tmux_session,
+        commands::devops::get_tmux_session_output,
+        commands::devops::send_tmux_command,
+        commands::devops::recover_tmux_sessions,
+        commands::devops::is_tmux_running,
+        commands::devops::list_git_worktrees,
+        commands::devops::get_git_worktree_info,
+        commands::devops::check_worktree_collision,
+        commands::devops::create_git_worktree,
+        commands::devops::create_git_worktree_existing_branch,
+        commands::devops::remove_git_worktree,
+        commands::devops::prune_git_worktrees,
+        commands::devops::get_git_repo_root,
+        commands::devops::get_git_default_branch,
+        commands::devops::check_gh_auth,
+        commands::devops::list_github_issues,
+        commands::devops::get_github_issue,
+        commands::devops::get_github_issue_with_agent,
+        commands::devops::create_github_issue,
+        commands::devops::comment_on_github_issue,
+        commands::devops::assign_agent_to_issue,
+        commands::devops::list_github_issue_comments,
+        commands::devops::update_github_issue_labels,
+        commands::devops::close_github_issue,
+        commands::devops::reopen_github_issue,
+        commands::devops::list_github_prs,
+        commands::devops::get_github_pr,
+        commands::devops::get_github_pr_status,
+        commands::devops::create_github_pr,
+        commands::devops::merge_github_pr,
+        commands::devops::close_github_pr,
+        commands::devops::spawn_agent,
+        commands::devops::list_agent_statuses,
+        commands::devops::cleanup_agent,
+        commands::devops::create_pr_from_agent,
+        commands::devops::complete_agent_work,
+        commands::devops::check_and_cleanup_merged_pr,
+        commands::devops::get_current_machine_id,
+        commands::devops::list_local_agent_statuses,
+        commands::devops::list_remote_agent_statuses,
         helpers::clamshell::is_laptop,
         vad_model::is_vad_model_ready,
         vad_model::download_vad_model_if_needed,

@@ -1,12 +1,12 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React from "react";
 import { useTranslation } from "react-i18next";
-import { commands, AgentStatus } from "@/bindings";
+import { AgentStatus } from "@/bindings";
+import { useDevOpsStore } from "@/stores/devopsStore";
 import {
   Bot,
   RefreshCcw,
   Loader2,
   AlertCircle,
-  ExternalLink,
   Trash2,
   GitPullRequest,
   CircleDot,
@@ -14,8 +14,6 @@ import {
   Terminal,
   Monitor,
   Clock,
-  CheckCircle2,
-  Filter,
   Laptop,
   Globe,
 } from "lucide-react";
@@ -30,75 +28,28 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
   repoPath,
 }) => {
   const { t } = useTranslation();
-  const [agents, setAgents] = useState<AgentStatus[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [cleaningUp, setCleaningUp] = useState<string | null>(null);
-  const [completingWork, setCompletingWork] = useState<string | null>(null);
-  const [filterMode, setFilterMode] = useState<"all" | "local" | "remote">(
-    "all",
-  );
-  const [currentMachineId, setCurrentMachineId] = useState<string>("");
 
-  const loadAgents = useCallback(async (showLoading = false) => {
-    if (showLoading) {
-      setIsLoading(true);
-    }
-    setError(null);
-    try {
-      const result = await commands.listAgentStatuses();
-      if (result.status === "ok") {
-        setAgents(result.data);
-      } else {
-        setError(result.error);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      if (showLoading) {
-        setIsLoading(false);
-      }
-    }
-  }, []);
+  // Use Zustand store instead of component state
+  const agents = useDevOpsStore((state) => state.agents);
+  const isLoading = useDevOpsStore((state) => state.agentsLoading);
+  const error = useDevOpsStore((state) => state.agentsError);
+  const filterMode = useDevOpsStore((state) => state.agentFilterMode);
+  const currentMachineId = useDevOpsStore((state) => state.currentMachineId);
+  const cleaningUp = useDevOpsStore((state) => state.cleaningUpAgent);
+  const completingWork = useDevOpsStore((state) => state.completingWork);
 
-  useEffect(() => {
-    loadAgents(true); // Show loading on initial load
-    // Load current machine ID
-    commands
-      .getCurrentMachineId()
-      .then(setCurrentMachineId)
-      .catch(() => {});
-    // Refresh every 12 seconds (staggered from SessionManager's 10s to avoid simultaneous updates)
-    // Don't show loading spinner on auto-refresh to prevent flickering
-    const interval = setInterval(() => loadAgents(false), 12000);
-    return () => clearInterval(interval);
-  }, [loadAgents]);
+  const refreshAgents = useDevOpsStore((state) => state.refreshAgents);
+  const setFilterMode = useDevOpsStore((state) => state.setAgentFilterMode);
+  const cleanupAgent = useDevOpsStore((state) => state.cleanupAgent);
+  const completeAgentWork = useDevOpsStore((state) => state.completeAgentWork);
 
   const handleCompleteWork = async (agent: AgentStatus) => {
     if (!agent.issue_ref) {
-      setError(t("devops.orchestrator.noIssueRef"));
       return;
     }
 
-    setCompletingWork(agent.session);
-    setError(null);
-
-    try {
-      const prTitle = `Fix for ${agent.issue_ref}`;
-      await commands.completeAgentWork(
-        agent.session,
-        prTitle,
-        null,
-        ["agent-working"], // Labels to remove
-        ["needs-review"], // Labels to add
-        false, // Not draft
-      );
-      await loadAgents(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setCompletingWork(null);
-    }
+    const prTitle = `Fix for ${agent.issue_ref}`;
+    await completeAgentWork(agent, prTitle);
   };
 
   // Filter agents based on filter mode
@@ -109,35 +60,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
   });
 
   const handleCleanup = async (agent: AgentStatus, removeWorktree: boolean) => {
-    if (!agent.worktree) {
-      setError("Agent has no associated worktree");
-      return;
-    }
-
-    setCleaningUp(agent.session);
-    try {
-      // Get repo root from worktree path
-      const repoRootResult = await commands.getGitRepoRoot(agent.worktree);
-      if (repoRootResult.status === "error") {
-        setError(repoRootResult.error);
-        return;
-      }
-      const cleanupResult = await commands.cleanupAgent(
-        agent.session,
-        repoRootResult.data,
-        removeWorktree,
-        removeWorktree,
-      );
-      if (cleanupResult.status === "error") {
-        setError(cleanupResult.error);
-        return;
-      }
-      await loadAgents(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setCleaningUp(null);
-    }
+    await cleanupAgent(agent, removeWorktree);
   };
 
   const formatDate = (dateStr: string) => {
@@ -164,7 +87,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
         <AlertCircle className="w-4 h-4" />
         <span className="text-sm">{error}</span>
         <button
-          onClick={loadAgents}
+          onClick={() => refreshAgents(true)}
           className="ml-auto p-1 hover:bg-mid-gray/20 rounded"
         >
           <RefreshCcw className="w-4 h-4" />
@@ -228,7 +151,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
             </button>
           </div>
           <button
-            onClick={() => loadAgents(true)}
+            onClick={() => refreshAgents(true)}
             disabled={isLoading}
             className="p-1 hover:bg-mid-gray/20 rounded transition-colors"
             title={t("devops.refresh")}

@@ -1,6 +1,7 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React from "react";
 import { useTranslation } from "react-i18next";
-import { commands, TmuxSession, RecoveredSession } from "@/bindings";
+import { TmuxSession, RecoveredSession } from "@/bindings";
+import { useDevOpsStore } from "@/stores/devopsStore";
 import {
   Terminal,
   Play,
@@ -8,12 +9,10 @@ import {
   RefreshCcw,
   Loader2,
   AlertCircle,
-  CheckCircle2,
   Clock,
   Trash2,
   RotateCcw,
   GitBranch,
-  ExternalLink,
 } from "lucide-react";
 
 interface SessionManagerProps {
@@ -24,67 +23,21 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
   onSessionsChange,
 }) => {
   const { t } = useTranslation();
-  const [sessions, setSessions] = useState<TmuxSession[]>([]);
-  const [recoveredSessions, setRecoveredSessions] = useState<
-    RecoveredSession[]
-  >([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isTmuxRunning, setIsTmuxRunning] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [killingSession, setKillingSession] = useState<string | null>(null);
 
-  const loadSessions = useCallback(async (showLoading = false) => {
-    if (showLoading) {
-      setIsLoading(true);
-    }
-    setError(null);
-    try {
-      const running = await commands.isTmuxRunning();
-      setIsTmuxRunning(running);
+  // Use Zustand store instead of component state
+  const sessions = useDevOpsStore((state) => state.sessions);
+  const recoveredSessions = useDevOpsStore((state) => state.recoveredSessions);
+  const isLoading = useDevOpsStore((state) => state.sessionsLoading);
+  const isTmuxRunning = useDevOpsStore((state) => state.isTmuxRunning);
+  const error = useDevOpsStore((state) => state.sessionsError);
+  const killingSession = useDevOpsStore((state) => state.killingSession);
 
-      if (running) {
-        const [sessionResult, recoveredResult] = await Promise.all([
-          commands.listTmuxSessions(),
-          commands.recoverTmuxSessions(),
-        ]);
-        if (sessionResult.status === "ok") {
-          setSessions(sessionResult.data);
-        }
-        if (recoveredResult.status === "ok") {
-          setRecoveredSessions(recoveredResult.data);
-        }
-      } else {
-        setSessions([]);
-        setRecoveredSessions([]);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      if (showLoading) {
-        setIsLoading(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    loadSessions(true); // Show loading on initial load
-    // Refresh every 10 seconds
-    // Don't show loading spinner on auto-refresh to prevent flickering
-    const interval = setInterval(() => loadSessions(false), 10000);
-    return () => clearInterval(interval);
-  }, [loadSessions]);
+  const refreshSessions = useDevOpsStore((state) => state.refreshSessions);
+  const killSessionAction = useDevOpsStore((state) => state.killSession);
 
   const handleKillSession = async (sessionName: string) => {
-    setKillingSession(sessionName);
-    try {
-      await commands.killTmuxSession(sessionName);
-      await loadSessions(false);
-      onSessionsChange?.();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setKillingSession(null);
-    }
+    await killSessionAction(sessionName);
+    onSessionsChange?.();
   };
 
   const formatTimestamp = (timestamp: string) => {
@@ -135,7 +88,7 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
         <AlertCircle className="w-4 h-4" />
         <span className="text-sm">{error}</span>
         <button
-          onClick={loadSessions}
+          onClick={() => refreshSessions(true)}
           className="ml-auto p-1 hover:bg-mid-gray/20 rounded"
         >
           <RefreshCcw className="w-4 h-4" />
@@ -166,7 +119,7 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
           {t("devops.sessions.activeCount", { count: sessions.length })}
         </span>
         <button
-          onClick={() => loadSessions(true)}
+          onClick={() => refreshSessions(true)}
           disabled={isLoading}
           className="p-1 hover:bg-mid-gray/20 rounded transition-colors"
           title={t("devops.refresh")}

@@ -8,6 +8,7 @@ import { WorktreeManager } from "./WorktreeManager";
 import { IssueQueue } from "./IssueQueue";
 import { PullRequestPanel } from "./PullRequestPanel";
 import { AgentDashboard } from "./AgentDashboard";
+import { initializeDevOpsStore, cleanupDevOpsStore } from "@/stores/devopsStore";
 import {
   Terminal,
   GitBranch,
@@ -57,6 +58,14 @@ export const DevOpsSettings: React.FC = () => {
   useEffect(() => {
     checkDependencies();
     loadEnabledAgents();
+
+    // Initialize DevOps store for agents and sessions
+    initializeDevOpsStore();
+
+    // Cleanup on unmount
+    return () => {
+      cleanupDevOpsStore();
+    };
   }, [checkDependencies, loadEnabledAgents]);
 
   const handleAgentToggle = async (agentType: string, enabled: boolean) => {

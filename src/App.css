@@ -4,6 +4,7 @@
 @theme {
   --color-text: #0f0f0f;
   --color-background: #fbfbfb;
+  --color-background-dark: #e5e5e5;
   --color-background-ui: #0891b2;
   --color-logo-primary: #22d3ee;
   --color-logo-secondary: #a855f7;
@@ -48,6 +49,7 @@
     /* Colors - Dark Theme (Cyberpunk) */
     --color-text: #f0f9ff;
     --color-background: #0c0a1a;
+    --color-background-dark: #1a1730;
     --color-logo-primary: #22d3ee;
     --color-logo-secondary: #c084fc;
     --color-logo-stroke: #e0f2fe;

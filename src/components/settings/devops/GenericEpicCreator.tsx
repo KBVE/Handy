@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { EpicConfig, EpicInfo, PhaseConfig } from "../../../bindings";
+import { toast } from "../../../stores/toastStore";
 
 interface PlanTemplate {
   id: string;
@@ -102,12 +103,19 @@ export function GenericEpicCreator() {
     const loadTemplates = async () => {
       try {
         setTemplatesLoading(true);
+        console.log("Loading templates from filesystem...");
         const loadedTemplates = await invoke<PlanTemplate[]>("list_epic_plan_templates");
+        console.log("Loaded templates:", loadedTemplates);
         setTemplates(loadedTemplates);
         setTemplatesError(null);
       } catch (err) {
         console.error("Failed to load templates:", err);
         setTemplatesError(err as string);
+        toast.warning(
+          "Template Loading Failed",
+          "Using fallback templates. Could not load from docs/plans/",
+          7000
+        );
         // Fallback to hardcoded templates if filesystem loading fails
         const fallbackTemplates: PlanTemplate[] = [
           {
@@ -242,9 +250,19 @@ export function GenericEpicCreator() {
       const epicInfo = await invoke<EpicInfo>("create_epic", { config });
       setResult(epicInfo);
       console.log("Epic created:", epicInfo);
+      toast.success(
+        "Epic Created Successfully",
+        `Epic #${epicInfo.epic_number} created in ${epicInfo.repo}`,
+        8000
+      );
     } catch (err) {
       setError(err as string);
       console.error("Failed to create epic:", err);
+      toast.error(
+        "Failed to Create Epic",
+        err as string,
+        10000
+      );
     } finally {
       setCreating(false);
     }

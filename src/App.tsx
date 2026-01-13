@@ -6,6 +6,7 @@ import { AuthScreen, AuthMode } from "./components/auth";
 import Footer from "./components/footer";
 import Onboarding from "./components/onboarding";
 import { Sidebar, SidebarSection, SECTIONS_CONFIG } from "./components/Sidebar";
+import { ToastContainer } from "./components/common/ToastContainer";
 import { useSettings } from "./hooks/useSettings";
 import { useSidecarStore } from "./stores/sidecarStore";
 import { useAuth } from "./hooks/useAuth";
@@ -197,6 +198,8 @@ function App() {
       </div>
       {/* Fixed footer at bottom */}
       <Footer />
+      {/* Toast notifications - appears above footer */}
+      <ToastContainer />
     </div>
   );
 }

@@ -595,6 +595,7 @@ pub fn run() {
         commands::devops::spawn_agent_from_issue,
         commands::devops::complete_agent_work_with_pr,
         commands::devops::plan_epic_from_markdown,
+        commands::devops::list_epic_plan_templates,
         helpers::clamshell::is_laptop,
         vad_model::is_vad_model_ready,
         vad_model::download_vad_model_if_needed,

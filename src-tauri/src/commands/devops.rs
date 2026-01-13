@@ -622,3 +622,12 @@ pub async fn plan_epic_from_markdown(
 
     crate::devops::operations::plan_from_markdown(config, enabled_agents).await
 }
+
+/// List all available Epic plan templates from docs/plans directory
+#[tauri::command]
+#[specta::specta]
+pub fn list_epic_plan_templates() -> Result<Vec<crate::devops::operations::PlanTemplate>, String> {
+    let repo_root = std::env::current_dir()
+        .map_err(|e| format!("Failed to get current directory: {}", e))?;
+    crate::devops::operations::list_plan_templates(&repo_root)
+}

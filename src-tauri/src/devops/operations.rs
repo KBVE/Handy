@@ -12,8 +12,10 @@
 pub mod agent_lifecycle;
 pub mod epic;
 pub mod plan;
+pub mod plan_parser;
 
 // Re-export for convenience
 pub use agent_lifecycle::*;
 pub use epic::*;
 pub use plan::*;
+pub use plan_parser::*;

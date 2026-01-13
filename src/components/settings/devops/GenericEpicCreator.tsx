@@ -1,6 +1,16 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { EpicConfig, EpicInfo, PhaseConfig } from "../../../bindings";
+
+interface PlanTemplate {
+  id: string;
+  title: string;
+  description: string;
+  labels: string[];
+  goal: string;
+  success_metrics: string[];
+  phases: PhaseConfig[];
+}
 
 interface EpicPlan {
   title: string;
@@ -67,6 +77,11 @@ export function GenericEpicCreator() {
   const [repo, setRepo] = useState<string>("KBVE/Handy");
   const [workRepo, setWorkRepo] = useState<string>("");
 
+  // Loaded templates from filesystem
+  const [templates, setTemplates] = useState<PlanTemplate[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(true);
+  const [templatesError, setTemplatesError] = useState<string | null>(null);
+
   // Editable plan state
   const [title, setTitle] = useState<string>("");
   const [goal, setGoal] = useState<string>("");
@@ -82,14 +97,56 @@ export function GenericEpicCreator() {
   const [newMetric, setNewMetric] = useState<string>("");
   const [newLabel, setNewLabel] = useState<string>("");
 
-  const loadTemplate = (templateKey: string) => {
-    const template = EPIC_TEMPLATES[templateKey];
+  // Load templates on mount
+  useEffect(() => {
+    const loadTemplates = async () => {
+      try {
+        setTemplatesLoading(true);
+        const loadedTemplates = await invoke<PlanTemplate[]>("list_epic_plan_templates");
+        setTemplates(loadedTemplates);
+        setTemplatesError(null);
+      } catch (err) {
+        console.error("Failed to load templates:", err);
+        setTemplatesError(err as string);
+        // Fallback to hardcoded templates if filesystem loading fails
+        const fallbackTemplates: PlanTemplate[] = [
+          {
+            id: "blank",
+            title: "",
+            description: "Start from scratch",
+            labels: [],
+            goal: "",
+            success_metrics: [],
+            phases: [],
+          },
+          {
+            id: "cicd-testing",
+            title: EPIC_TEMPLATES["cicd-testing"].title,
+            description: "Comprehensive testing infrastructure",
+            labels: EPIC_TEMPLATES["cicd-testing"].labels,
+            goal: EPIC_TEMPLATES["cicd-testing"].goal,
+            success_metrics: EPIC_TEMPLATES["cicd-testing"].successMetrics,
+            phases: EPIC_TEMPLATES["cicd-testing"].phases,
+          },
+        ];
+        setTemplates(fallbackTemplates);
+      } finally {
+        setTemplatesLoading(false);
+      }
+    };
+    loadTemplates();
+  }, []);
+
+  const loadTemplate = (templateId: string) => {
+    const template = templates.find((t) => t.id === templateId);
+    if (!template) return;
+
     setTitle(template.title);
     setGoal(template.goal);
-    setSuccessMetrics([...template.successMetrics]);
+    setSuccessMetrics([...template.success_metrics]);
     setPhases([...template.phases]);
     setLabels([...template.labels]);
-    setSelectedTemplate(templateKey);
+    setSelectedTemplate(templateId);
   };
 
   const handleTemplateSelect = () => {
@@ -210,6 +267,18 @@ export function GenericEpicCreator() {
     return (
       <div className="space-y-4">
         <div className="space-y-3">
+          {templatesLoading && (
+            <div className="text-xs text-gray-400 py-2">
+              Loading templates...
+            </div>
+          )}
+
+          {templatesError && (
+            <div className="text-xs text-yellow-400 py-2">
+              Note: Using fallback templates (could not load from docs/plans/)
+            </div>
+          )}
+
           <div>
             <label className="block text-xs text-gray-400 mb-1.5">
               Choose Template
@@ -218,9 +287,13 @@ export function GenericEpicCreator() {
               value={selectedTemplate}
               onChange={(e) => setSelectedTemplate(e.target.value)}
               className="w-full px-3 py-2 bg-mid-gray/10 border border-mid-gray/20 rounded text-sm text-white focus:outline-none focus:border-blue-500"
+              disabled={templatesLoading}
             >
-              <option value="blank">Blank (Start from scratch)</option>
-              <option value="cicd-testing">CICD Testing Infrastructure</option>
+              {templates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.title || "Blank (Start from scratch)"} {template.description && `- ${template.description}`}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -259,19 +332,19 @@ export function GenericEpicCreator() {
             </div>
           </div>
 
-          {selectedTemplate !== "blank" && (
+          {selectedTemplate !== "blank" && templates.find((t) => t.id === selectedTemplate) && (
             <div className="p-3 bg-mid-gray/5 border border-mid-gray/10 rounded space-y-2">
               <div className="text-xs">
                 <div className="text-gray-400">Template Preview:</div>
                 <div className="text-gray-300 mt-1">
-                  {EPIC_TEMPLATES[selectedTemplate].goal}
+                  {templates.find((t) => t.id === selectedTemplate)?.goal}
                 </div>
               </div>
               <div className="text-xs">
                 <div className="text-gray-400">
-                  Phases: {EPIC_TEMPLATES[selectedTemplate].phases.length} |
+                  Phases: {templates.find((t) => t.id === selectedTemplate)?.phases.length || 0} |
                   Metrics:{" "}
-                  {EPIC_TEMPLATES[selectedTemplate].successMetrics.length}
+                  {templates.find((t) => t.id === selectedTemplate)?.success_metrics.length || 0}
                 </div>
               </div>
             </div>

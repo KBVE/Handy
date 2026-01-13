@@ -11,6 +11,9 @@ use std::process::Command;
 /// Session naming prefix for all Handy agent sessions
 const SESSION_PREFIX: &str = "handy-agent-";
 
+/// Base prefix for all Handy-related tmux sessions (includes master)
+const HANDY_PREFIX: &str = "handy-";
+
 /// Custom socket name to avoid macOS /private/tmp permission issues
 const SOCKET_NAME: &str = "handy";
 
@@ -161,8 +164,8 @@ pub fn list_sessions() -> Result<Vec<TmuxSession>, String> {
             let windows = parts[2].parse().unwrap_or(1);
             let created = parts[3].parse().unwrap_or(0);
 
-            // Only include Handy agent sessions
-            if name.starts_with(SESSION_PREFIX) {
+            // Only include Handy sessions (agents and master)
+            if name.starts_with(HANDY_PREFIX) {
                 let metadata = get_session_metadata(&name).ok();
                 let status = if check_session_has_active_process(&name) {
                     SessionStatus::Running

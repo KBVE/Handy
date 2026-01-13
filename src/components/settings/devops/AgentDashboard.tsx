@@ -83,7 +83,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
 
   if (error) {
     return (
-      <div className="flex items-center gap-2 p-3 bg-red-500/10 rounded-lg text-red-400">
+      <div className="flex items-center gap-2 p-4 bg-red-500/10 rounded-lg text-red-400">
         <AlertCircle className="w-4 h-4" />
         <span className="text-sm">{error}</span>
         <button
@@ -115,10 +115,10 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
         </div>
         <div className="flex items-center gap-2">
           {/* Filter buttons */}
-          <div className="flex items-center rounded bg-mid-gray/10">
+          <div className="flex items-center rounded bg-mid-gray/10 p-1">
             <button
               onClick={() => setFilterMode("all")}
-              className={`px-2 py-1 text-xs rounded-l transition-colors ${
+              className={`px-2.5 py-1.5 text-xs rounded-l transition-colors ${
                 filterMode === "all"
                   ? "bg-logo-primary text-white"
                   : "text-mid-gray hover:text-white"
@@ -129,7 +129,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
             </button>
             <button
               onClick={() => setFilterMode("local")}
-              className={`px-2 py-1 text-xs transition-colors ${
+              className={`px-2.5 py-1.5 text-xs transition-colors ${
                 filterMode === "local"
                   ? "bg-logo-primary text-white"
                   : "text-mid-gray hover:text-white"
@@ -140,7 +140,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
             </button>
             <button
               onClick={() => setFilterMode("remote")}
-              className={`px-2 py-1 text-xs rounded-r transition-colors ${
+              className={`px-2.5 py-1.5 text-xs rounded-r transition-colors ${
                 filterMode === "remote"
                   ? "bg-logo-primary text-white"
                   : "text-mid-gray hover:text-white"
@@ -187,7 +187,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
             >
               {/* Agent Header */}
               <div
-                className="flex items-start gap-3 p-3 cursor-pointer"
+                className="flex items-start gap-3 p-4 cursor-pointer"
                 onClick={() => onAgentSelect?.(agent)}
               >
                 {/* Status icon */}

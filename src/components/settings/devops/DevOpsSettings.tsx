@@ -88,7 +88,7 @@ export const DevOpsSettings: React.FC = () => {
     enabledAgents.includes(agentType);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="max-w-3xl w-full mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -114,7 +114,7 @@ export const DevOpsSettings: React.FC = () => {
 
       {/* Error state */}
       {error && (
-        <div className="flex items-center gap-2 p-3 bg-red-500/10 rounded-lg text-red-400">
+        <div className="flex items-center gap-2 p-4 bg-red-500/10 rounded-lg text-red-400">
           <AlertCircle className="w-4 h-4" />
           <span className="text-sm">{error}</span>
         </div>
@@ -132,7 +132,7 @@ export const DevOpsSettings: React.FC = () => {
         ) : dependencies ? (
           <div className="flex flex-col gap-3">
             {/* Overall status */}
-            <div className="flex items-center gap-2 pb-3 border-b border-mid-gray/20">
+            <div className="flex items-center gap-2 p-4 border-b border-mid-gray/20">
               {dependencies.all_satisfied ? (
                 <>
                   <CheckCircle2 className="w-5 h-5 text-green-400" />
@@ -151,7 +151,7 @@ export const DevOpsSettings: React.FC = () => {
             </div>
 
             {/* Required dependencies */}
-            <div className="text-xs text-mid-gray/70 mb-2 mt-2">
+            <div className="text-xs text-mid-gray/70 mb-3 mt-3 px-1">
               {t("devops.dependencies.required")}
             </div>
             <DependencyStatus
@@ -168,7 +168,7 @@ export const DevOpsSettings: React.FC = () => {
             />
 
             {/* AI Agents (at least one required) */}
-            <div className="text-xs text-mid-gray/70 mb-2 mt-4">
+            <div className="text-xs text-mid-gray/70 mb-3 mt-5 px-1">
               {t("devops.dependencies.agents")}
             </div>
             <DependencyStatus
@@ -203,7 +203,7 @@ export const DevOpsSettings: React.FC = () => {
             />
 
             {/* Local LLM Servers */}
-            <div className="text-xs text-mid-gray/70 mb-2 mt-4">
+            <div className="text-xs text-mid-gray/70 mb-3 mt-5 px-1">
               {t("devops.dependencies.localLlm")}
             </div>
             <DependencyStatus
@@ -229,7 +229,7 @@ export const DevOpsSettings: React.FC = () => {
 
             {/* Enabled agents summary */}
             {enabledAgents.length > 0 && (
-              <div className="mt-3 pt-3 border-t border-mid-gray/20 text-xs text-mid-gray">
+              <div className="mt-4 pt-4 px-4 border-t border-mid-gray/20 text-xs text-mid-gray">
                 {t("devops.dependencies.enabledAgents")}:{" "}
                 {enabledAgents.join(", ")}
               </div>

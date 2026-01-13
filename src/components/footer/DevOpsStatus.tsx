@@ -76,7 +76,7 @@ export const DevOpsStatus: React.FC = () => {
       {showPopover && (
         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 bg-background border border-mid-gray/30 rounded-lg shadow-xl z-50">
           {/* Header */}
-          <div className="flex items-center justify-between px-3 py-2 border-b border-mid-gray/20">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-mid-gray/20">
             <div className="flex items-center gap-2">
               <Terminal className="w-4 h-4 text-text/70" />
               <span className="font-medium text-sm">
@@ -92,7 +92,7 @@ export const DevOpsStatus: React.FC = () => {
           </div>
 
           {/* Content */}
-          <div className="px-3 py-2 text-xs space-y-2">
+          <div className="px-4 py-3 text-xs space-y-2.5">
             <div className="flex items-center justify-between">
               <span className="text-text/60">
                 {t("footer.devops.tmuxServer")}
@@ -144,7 +144,7 @@ export const DevOpsStatus: React.FC = () => {
               </div>
             )}
 
-            <p className="text-xs text-text/40 pt-2 border-t border-mid-gray/20">
+            <p className="text-xs text-text/40 pt-2.5 mt-0.5 border-t border-mid-gray/20">
               {t("footer.devops.description")}
             </p>
           </div>

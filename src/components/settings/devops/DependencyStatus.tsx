@@ -31,7 +31,7 @@ export const DependencyStatus: React.FC<DependencyStatusProps> = ({
   };
 
   return (
-    <div className="flex items-start gap-3 p-3 rounded-lg bg-mid-gray/10">
+    <div className="flex items-start gap-3 p-4 rounded-lg bg-mid-gray/10">
       {/* Status icon */}
       <div className="mt-0.5">
         {status.installed ? (

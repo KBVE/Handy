@@ -84,7 +84,7 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
 
   if (error) {
     return (
-      <div className="flex items-center gap-2 p-3 bg-red-500/10 rounded-lg text-red-400">
+      <div className="flex items-center gap-2 p-4 bg-red-500/10 rounded-lg text-red-400">
         <AlertCircle className="w-4 h-4" />
         <span className="text-sm">{error}</span>
         <button
@@ -135,7 +135,7 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
         {sessions.map((session) => (
           <div
             key={session.name}
-            className="flex items-start gap-3 p-3 rounded-lg bg-mid-gray/10 hover:bg-mid-gray/15 transition-colors"
+            className="flex items-start gap-3 p-4 rounded-lg bg-mid-gray/10 hover:bg-mid-gray/15 transition-colors"
           >
             {/* Status icon */}
             <div className="mt-1">{getStatusIcon(session.status)}</div>
@@ -199,7 +199,7 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
       {/* Recovery suggestions */}
       {recoveredSessions.some((s) => s.recommended_action !== "None") && (
         <div className="mt-4 pt-4 border-t border-mid-gray/20">
-          <h4 className="text-sm font-medium mb-2">
+          <h4 className="text-sm font-medium mb-3">
             {t("devops.sessions.recoveryTitle")}
           </h4>
           <div className="flex flex-col gap-2">
@@ -208,7 +208,7 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
               .map((session) => (
                 <div
                   key={session.metadata.session}
-                  className="flex items-center gap-2 p-2 rounded bg-yellow-500/10 text-sm"
+                  className="flex items-center gap-2 p-3 rounded bg-yellow-500/10 text-sm"
                 >
                   <RotateCcw className="w-4 h-4 text-yellow-400" />
                   <span className="flex-1">

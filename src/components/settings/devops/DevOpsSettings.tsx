@@ -33,7 +33,7 @@ export const DevOpsSettings: React.FC = () => {
   const [enabledAgents, setEnabledAgents] = useState<string[]>([]);
   const [isTogglingAgent, setIsTogglingAgent] = useState<string | null>(null);
 
-  const checkDependencies = useCallback(async () => {
+  const checkDependencies = async () => {
     setIsLoading(true);
     setError(null);
     try {
@@ -44,18 +44,18 @@ export const DevOpsSettings: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
-
-  const loadEnabledAgents = useCallback(async () => {
-    try {
-      const agents = await commands.getEnabledAgents();
-      setEnabledAgents(agents);
-    } catch (err) {
-      console.error("Failed to load enabled agents:", err);
-    }
-  }, []);
+  };
 
   useEffect(() => {
+    const loadEnabledAgents = async () => {
+      try {
+        const agents = await commands.getEnabledAgents();
+        setEnabledAgents(agents);
+      } catch (err) {
+        console.error("Failed to load enabled agents:", err);
+      }
+    };
+
     checkDependencies();
     loadEnabledAgents();
 
@@ -66,7 +66,7 @@ export const DevOpsSettings: React.FC = () => {
     return () => {
       cleanupDevOpsStore();
     };
-  }, [checkDependencies, loadEnabledAgents]);
+  }, []);
 
   const handleAgentToggle = async (agentType: string, enabled: boolean) => {
     setIsTogglingAgent(agentType);

@@ -96,65 +96,71 @@ export const useDevOpsStore = create<DevOpsStore>()(
 
     // Refresh agents from backend
     refreshAgents: async (showLoading = false) => {
-      const state = get();
+      const startState = get();
 
-      if (showLoading && !state.agentsLoading) {
+      if (showLoading && !startState.agentsLoading) {
+        console.log('[DevOps Store] Setting agentsLoading = true');
         set({ agentsLoading: true });
-      }
-
-      // Only clear error if there is one
-      if (state.agentsError !== null) {
-        set({ agentsError: null });
       }
 
       try {
         const result = await commands.listAgentStatuses();
+        const currentState = get();
+
         if (result.status === "ok") {
           // Only update if data actually changed
-          const currentAgents = state.agents;
-          if (JSON.stringify(currentAgents) !== JSON.stringify(result.data)) {
+          const dataChanged = JSON.stringify(currentState.agents) !== JSON.stringify(result.data);
+          if (dataChanged) {
+            console.log('[DevOps Store] Agents data changed, updating');
             set({ agents: result.data });
           }
-          // If there was an error before, clear it
-          if (state.agentsError !== null) {
+
+          // Clear error only if there was one
+          if (currentState.agentsError !== null) {
+            console.log('[DevOps Store] Clearing agents error');
             set({ agentsError: null });
           }
         } else {
           // Only set error if it changed
-          if (state.agentsError !== result.error) {
+          if (currentState.agentsError !== result.error) {
+            console.log('[DevOps Store] Setting agents error:', result.error);
             set({ agentsError: result.error });
           }
         }
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
-        if (state.agentsError !== errorMsg) {
+        const currentState = get();
+        if (currentState.agentsError !== errorMsg) {
+          console.log('[DevOps Store] Setting agents error from exception:', errorMsg);
           set({ agentsError: errorMsg });
         }
       } finally {
-        if (showLoading && state.agentsLoading) {
-          set({ agentsLoading: false });
+        if (showLoading) {
+          const finalState = get();
+          if (finalState.agentsLoading) {
+            console.log('[DevOps Store] Setting agentsLoading = false');
+            set({ agentsLoading: false });
+          }
         }
       }
     },
 
     // Refresh tmux sessions from backend
     refreshSessions: async (showLoading = false) => {
-      const state = get();
+      const startState = get();
 
-      if (showLoading && !state.sessionsLoading) {
+      if (showLoading && !startState.sessionsLoading) {
+        console.log('[DevOps Store] Setting sessionsLoading = true');
         set({ sessionsLoading: true });
-      }
-
-      // Only clear error if there is one
-      if (state.sessionsError !== null) {
-        set({ sessionsError: null });
       }
 
       try {
         const running = await commands.isTmuxRunning();
+        const currentState = get();
 
         // Only update if changed
-        if (state.isTmuxRunning !== running) {
+        if (currentState.isTmuxRunning !== running) {
+          console.log('[DevOps Store] tmux running status changed:', running);
           set({ isTmuxRunning: running });
         }
 
@@ -164,38 +170,52 @@ export const useDevOpsStore = create<DevOpsStore>()(
             commands.recoverTmuxSessions(),
           ]);
 
+          const afterFetchState = get();
+
           if (sessionResult.status === "ok") {
-            const currentSessions = state.sessions;
-            if (JSON.stringify(currentSessions) !== JSON.stringify(sessionResult.data)) {
+            const sessionsChanged = JSON.stringify(afterFetchState.sessions) !== JSON.stringify(sessionResult.data);
+            if (sessionsChanged) {
+              console.log('[DevOps Store] Sessions data changed, updating');
               set({ sessions: sessionResult.data });
             }
           }
 
           if (recoveredResult.status === "ok") {
-            const currentRecovered = state.recoveredSessions;
-            if (JSON.stringify(currentRecovered) !== JSON.stringify(recoveredResult.data)) {
+            const recoveredChanged = JSON.stringify(afterFetchState.recoveredSessions) !== JSON.stringify(recoveredResult.data);
+            if (recoveredChanged) {
+              console.log('[DevOps Store] Recovered sessions changed, updating');
               set({ recoveredSessions: recoveredResult.data });
             }
           }
 
           // Clear error if it was set
-          if (state.sessionsError !== null) {
+          const finalState = get();
+          if (finalState.sessionsError !== null) {
+            console.log('[DevOps Store] Clearing sessions error');
             set({ sessionsError: null });
           }
         } else {
           // Only update if not already empty
-          if (state.sessions.length > 0 || state.recoveredSessions.length > 0) {
+          const emptyState = get();
+          if (emptyState.sessions.length > 0 || emptyState.recoveredSessions.length > 0) {
+            console.log('[DevOps Store] Clearing sessions (tmux not running)');
             set({ sessions: [], recoveredSessions: [] });
           }
         }
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
-        if (state.sessionsError !== errorMsg) {
+        const errorState = get();
+        if (errorState.sessionsError !== errorMsg) {
+          console.log('[DevOps Store] Setting sessions error:', errorMsg);
           set({ sessionsError: errorMsg });
         }
       } finally {
-        if (showLoading && state.sessionsLoading) {
-          set({ sessionsLoading: false });
+        if (showLoading) {
+          const finalState = get();
+          if (finalState.sessionsLoading) {
+            console.log('[DevOps Store] Setting sessionsLoading = false');
+            set({ sessionsLoading: false });
+          }
         }
       }
     },

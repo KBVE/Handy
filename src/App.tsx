@@ -10,6 +10,7 @@ import { ToastContainer } from "./components/common/ToastContainer";
 import { useSettings } from "./hooks/useSettings";
 import { useSidecarStore } from "./stores/sidecarStore";
 import { useAuth } from "./hooks/useAuth";
+import { useOverlayScrollbars } from "./hooks/useOverlayScrollbars";
 import { commands } from "@/bindings";
 
 const renderSettingsContent = (section: SidebarSection) => {
@@ -27,6 +28,9 @@ function App() {
   const initializeSidecar = useSidecarStore((state) => state.initialize);
   const cleanupSidecar = useSidecarStore((state) => state.cleanup);
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+
+  // Initialize custom scrollbars
+  useOverlayScrollbars();
 
   // Notify backend of section changes for context-aware shortcuts
   const handleSectionChange = useCallback((section: SidebarSection) => {

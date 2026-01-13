@@ -79,7 +79,17 @@ export function GenericEpicCreator() {
   const [workRepo, setWorkRepo] = useState<string>("");
 
   // Loaded templates from filesystem
-  const [templates, setTemplates] = useState<PlanTemplate[]>([]);
+  const [templates, setTemplates] = useState<PlanTemplate[]>([
+    {
+      id: "blank",
+      title: "Blank",
+      description: "Start from scratch",
+      labels: [],
+      goal: "",
+      success_metrics: [],
+      phases: [],
+    },
+  ]);
   const [templatesLoading, setTemplatesLoading] = useState(true);
   const [templatesError, setTemplatesError] = useState<string | null>(null);
 
@@ -120,7 +130,7 @@ export function GenericEpicCreator() {
         const fallbackTemplates: PlanTemplate[] = [
           {
             id: "blank",
-            title: "",
+            title: "Blank",
             description: "Start from scratch",
             labels: [],
             goal: "",

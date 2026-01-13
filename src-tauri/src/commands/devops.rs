@@ -626,8 +626,29 @@ pub async fn plan_epic_from_markdown(
 /// List all available Epic plan templates from docs/plans directory
 #[tauri::command]
 #[specta::specta]
-pub fn list_epic_plan_templates() -> Result<Vec<crate::devops::operations::PlanTemplate>, String> {
-    let repo_root = std::env::current_dir()
-        .map_err(|e| format!("Failed to get current directory: {}", e))?;
+pub fn list_epic_plan_templates(app: AppHandle) -> Result<Vec<crate::devops::operations::PlanTemplate>, String> {
+    // In dev mode, look relative to current directory (project root)
+    // In production, look relative to the app's resource directory
+    #[cfg(debug_assertions)]
+    let repo_root = {
+        // In dev mode, go up from src-tauri to project root
+        let current = std::env::current_dir()
+            .map_err(|e| format!("Failed to get current directory: {}", e))?;
+
+        // Check if we're in src-tauri directory
+        if current.ends_with("src-tauri") {
+            current.parent()
+                .ok_or_else(|| "Could not find parent directory".to_string())?
+                .to_path_buf()
+        } else {
+            current
+        }
+    };
+
+    #[cfg(not(debug_assertions))]
+    let repo_root = app.path()
+        .resource_dir()
+        .map_err(|e| format!("Failed to get resource directory: {}", e))?;
+
     crate::devops::operations::list_plan_templates(&repo_root)
 }

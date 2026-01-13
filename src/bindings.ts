@@ -1731,6 +1731,17 @@ async planEpicFromMarkdown(config: PlanFromMarkdownConfig) : Promise<Result<Plan
 }
 },
 /**
+ * List all available Epic plan templates from docs/plans directory
+ */
+async listEpicPlanTemplates() : Promise<Result<PlanTemplate[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_epic_plan_templates") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Checks if the Mac is a laptop by detecting battery presence
  * 
  * This uses pmset to check for battery information.
@@ -2412,6 +2423,38 @@ planning_agent: string;
  * Summary of what was created
  */
 summary: string }
+/**
+ * Parsed plan template ready for use
+ */
+export type PlanTemplate = { 
+/**
+ * Template identifier (filename without extension)
+ */
+id: string; 
+/**
+ * Template title from frontmatter
+ */
+title: string; 
+/**
+ * Template description from frontmatter
+ */
+description: string; 
+/**
+ * Labels from frontmatter
+ */
+labels: string[]; 
+/**
+ * Epic goal extracted from markdown
+ */
+goal: string; 
+/**
+ * Success metrics extracted from markdown
+ */
+success_metrics: string[]; 
+/**
+ * Phases extracted from markdown
+ */
+phases: PhaseConfig[] }
 export type PostProcessProvider = { id: string; label: string; base_url: string; allow_base_url_edit?: boolean; models_endpoint?: string | null }
 /**
  * PR check status.

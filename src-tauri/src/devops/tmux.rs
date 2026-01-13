@@ -465,12 +465,14 @@ pub fn ensure_master_session() -> Result<bool, String> {
     const MASTER_SESSION: &str = "handy-master";
 
     // Check if master session already exists
-    let sessions = list_sessions()?;
-    let exists = sessions.iter().any(|s| s.name == MASTER_SESSION);
-
-    if exists {
-        return Ok(false);
+    // list_sessions() will fail if tmux server isn't running, which is fine
+    if let Ok(sessions) = list_sessions() {
+        let exists = sessions.iter().any(|s| s.name == MASTER_SESSION);
+        if exists {
+            return Ok(false);
+        }
     }
+    // If list_sessions() failed, tmux server isn't running - we'll create the master session
 
     // Create master session with minimal metadata
     let metadata = AgentMetadata {

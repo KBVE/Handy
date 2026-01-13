@@ -1,6 +1,11 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
-import { commands, AgentStatus, TmuxSession, RecoveredSession } from "@/bindings";
+import {
+  commands,
+  AgentStatus,
+  TmuxSession,
+  RecoveredSession,
+} from "@/bindings";
 
 interface DevOpsStore {
   // Agent state
@@ -108,7 +113,8 @@ export const useDevOpsStore = create<DevOpsStore>()(
 
         if (result.status === "ok") {
           // Only update if data actually changed
-          const dataChanged = JSON.stringify(currentState.agents) !== JSON.stringify(result.data);
+          const dataChanged =
+            JSON.stringify(currentState.agents) !== JSON.stringify(result.data);
           if (dataChanged) {
             set({ agents: result.data });
           }
@@ -165,14 +171,18 @@ export const useDevOpsStore = create<DevOpsStore>()(
           const afterFetchState = get();
 
           if (sessionResult.status === "ok") {
-            const sessionsChanged = JSON.stringify(afterFetchState.sessions) !== JSON.stringify(sessionResult.data);
+            const sessionsChanged =
+              JSON.stringify(afterFetchState.sessions) !==
+              JSON.stringify(sessionResult.data);
             if (sessionsChanged) {
               set({ sessions: sessionResult.data });
             }
           }
 
           if (recoveredResult.status === "ok") {
-            const recoveredChanged = JSON.stringify(afterFetchState.recoveredSessions) !== JSON.stringify(recoveredResult.data);
+            const recoveredChanged =
+              JSON.stringify(afterFetchState.recoveredSessions) !==
+              JSON.stringify(recoveredResult.data);
             if (recoveredChanged) {
               set({ recoveredSessions: recoveredResult.data });
             }
@@ -186,7 +196,10 @@ export const useDevOpsStore = create<DevOpsStore>()(
         } else {
           // Only update if not already empty
           const emptyState = get();
-          if (emptyState.sessions.length > 0 || emptyState.recoveredSessions.length > 0) {
+          if (
+            emptyState.sessions.length > 0 ||
+            emptyState.recoveredSessions.length > 0
+          ) {
             set({ sessions: [], recoveredSessions: [] });
           }
         }
@@ -213,7 +226,9 @@ export const useDevOpsStore = create<DevOpsStore>()(
         await commands.killTmuxSession(sessionName);
         await get().refreshSessions(false);
       } catch (err) {
-        set({ sessionsError: err instanceof Error ? err.message : String(err) });
+        set({
+          sessionsError: err instanceof Error ? err.message : String(err),
+        });
       } finally {
         set({ killingSession: null });
       }
@@ -283,7 +298,12 @@ export const useDevOpsStore = create<DevOpsStore>()(
 
     // Initialize store and start polling
     initialize: async () => {
-      const { refreshAgents, refreshSessions, _setAgentRefreshInterval, _setSessionRefreshInterval } = get();
+      const {
+        refreshAgents,
+        refreshSessions,
+        _setAgentRefreshInterval,
+        _setSessionRefreshInterval,
+      } = get();
 
       // Load current machine ID
       try {
@@ -294,18 +314,21 @@ export const useDevOpsStore = create<DevOpsStore>()(
       }
 
       // Initial load with loading state
-      await Promise.all([
-        refreshAgents(true),
-        refreshSessions(true),
-      ]);
+      await Promise.all([refreshAgents(true), refreshSessions(true)]);
 
       // Set up polling intervals
       // Agents: 12 seconds (staggered from sessions)
-      const agentInterval = window.setInterval(() => refreshAgents(false), 12000);
+      const agentInterval = window.setInterval(
+        () => refreshAgents(false),
+        12000,
+      );
       _setAgentRefreshInterval(agentInterval);
 
       // Sessions: 10 seconds
-      const sessionInterval = window.setInterval(() => refreshSessions(false), 10000);
+      const sessionInterval = window.setInterval(
+        () => refreshSessions(false),
+        10000,
+      );
       _setSessionRefreshInterval(sessionInterval);
     },
 

@@ -9,6 +9,7 @@
 
 mod dependencies;
 pub mod github;
+pub mod operations;
 pub mod orchestrator;
 pub mod tmux;
 pub mod worktree;

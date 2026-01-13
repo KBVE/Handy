@@ -52,7 +52,8 @@ export const DevOpsStatus: React.FC = () => {
 
     if (showPopover) {
       document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
+      return () =>
+        document.removeEventListener("mousedown", handleClickOutside);
     }
   }, [showPopover]);
 

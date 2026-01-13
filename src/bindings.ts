@@ -1665,6 +1665,72 @@ async setEnabledAgents(agents: string[]) : Promise<string[]> {
     return await TAURI_INVOKE("set_enabled_agents", { agents });
 },
 /**
+ * Create a new epic issue with standardized structure
+ */
+async createEpic(config: EpicConfig) : Promise<Result<EpicInfo, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("create_epic", { config }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Create multiple sub-issues for an epic in batch
+ */
+async createSubIssues(epicNumber: number, epicRepo: string, epicWorkRepo: string, subIssues: SubIssueConfig[]) : Promise<Result<SubIssueInfo[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("create_sub_issues", { epicNumber, epicRepo, epicWorkRepo, subIssues }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Update epic issue progress based on sub-issue completion
+ */
+async updateEpicProgress(epicNumber: number, epicRepo: string) : Promise<Result<EpicProgress, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_epic_progress", { epicNumber, epicRepo }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Spawn an agent for a GitHub issue
+ */
+async spawnAgentFromIssue(config: SpawnAgentConfig) : Promise<Result<AgentSpawnResult, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("spawn_agent_from_issue", { config }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Complete agent work by creating a PR
+ */
+async completeAgentWorkWithPr(session: string, prTitle: string | null) : Promise<Result<AgentCompletionResult, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("complete_agent_work_with_pr", { session, prTitle }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Plan an Epic from a markdown file using AI agent
+ */
+async planEpicFromMarkdown(config: PlanFromMarkdownConfig) : Promise<Result<PlanResult, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("plan_epic_from_markdown", { config }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Checks if the Mac is a laptop by detecting battery presence
  * 
  * This uses pmset to check for battery information.
@@ -1708,6 +1774,26 @@ async downloadVadModelIfNeeded() : Promise<Result<string, string>> {
 /** user-defined types **/
 
 /**
+ * Result of completing agent work
+ */
+export type AgentCompletionResult = { 
+/**
+ * PR URL
+ */
+pr_url: string; 
+/**
+ * Issue number
+ */
+issue_number: number; 
+/**
+ * Session name
+ */
+session: string; 
+/**
+ * Status
+ */
+status: string }
+/**
  * Metadata stored with each agent session
  */
 export type AgentMetadata = { 
@@ -1739,6 +1825,30 @@ machine_id: string;
  * ISO timestamp when session started
  */
 started_at: string }
+/**
+ * Result of spawning an agent
+ */
+export type AgentSpawnResult = { 
+/**
+ * tmux session name
+ */
+session: string; 
+/**
+ * Issue number
+ */
+issue_number: number; 
+/**
+ * Worktree path
+ */
+worktree: string; 
+/**
+ * Agent type used
+ */
+agent_type: string; 
+/**
+ * Agent metadata
+ */
+metadata: AgentMetadata }
 /**
  * Status of an active agent.
  */
@@ -1907,6 +2017,87 @@ export type DiscordState = { connected: boolean; in_voice: boolean; listening: b
  */
 export type EmbeddingModelInfo = { id: string; name: string; description: string; dimension: number; size_mb: number; is_downloaded: boolean; is_loaded: boolean }
 export type EngineType = "Whisper" | "Parakeet" | "Moonshine"
+/**
+ * Configuration for creating a new epic issue
+ */
+export type EpicConfig = { 
+/**
+ * Epic title (without [EPIC] prefix - added automatically)
+ */
+title: string; 
+/**
+ * Tracking repository where Epic/Sub-issues are created (e.g., "org/Handy")
+ */
+repo: string; 
+/**
+ * Work repository where code lives and agents work (e.g., "user/project")
+ * If None, defaults to same as repo
+ */
+work_repo: string | null; 
+/**
+ * Epic description/goal (1-2 sentences)
+ */
+goal: string; 
+/**
+ * Success metrics (checkbox list)
+ */
+success_metrics: string[]; 
+/**
+ * Phases with descriptions
+ */
+phases: PhaseConfig[]; 
+/**
+ * Labels to add to epic (epic label added automatically)
+ */
+labels: string[] }
+/**
+ * Information about a created epic
+ */
+export type EpicInfo = { 
+/**
+ * Epic issue number
+ */
+epic_number: number; 
+/**
+ * Tracking repository (where Epic is created)
+ */
+repo: string; 
+/**
+ * Work repository (where code lives)
+ */
+work_repo: string; 
+/**
+ * Epic title
+ */
+title: string; 
+/**
+ * GitHub issue URL
+ */
+url: string; 
+/**
+ * Phases from config
+ */
+phases: PhaseConfig[] }
+/**
+ * Epic progress statistics
+ */
+export type EpicProgress = { 
+/**
+ * Total sub-issues
+ */
+total: number; 
+/**
+ * Completed sub-issues
+ */
+completed: number; 
+/**
+ * Percentage complete
+ */
+percentage: number; 
+/**
+ * Remaining sub-issues
+ */
+remaining: number }
 /**
  * Output mode for filler word detection
  */
@@ -2160,6 +2351,67 @@ voice_name: string | null }
 export type OnichanModelType = "Llm" | "Tts"
 export type OverlayPosition = "none" | "top" | "bottom"
 export type PasteMethod = "ctrl_v" | "direct" | "none" | "shift_insert" | "ctrl_shift_v"
+/**
+ * Phase configuration within an epic
+ */
+export type PhaseConfig = { 
+/**
+ * Phase name (e.g., "Foundation", "Integration Tests")
+ */
+name: string; 
+/**
+ * Phase description
+ */
+description: string; 
+/**
+ * Approach: "manual", "agent-assisted", or "automated"
+ */
+approach: string }
+/**
+ * Configuration for planning an Epic from a markdown file
+ */
+export type PlanFromMarkdownConfig = { 
+/**
+ * Path to the markdown plan file
+ */
+plan_file_path: string; 
+/**
+ * Tracking repository where Epic/Sub-issues are created (e.g., "KBVE/Handy")
+ */
+repo: string; 
+/**
+ * Work repository where code lives and agents work (e.g., "user/project")
+ * If None, defaults to same as repo
+ */
+work_repo: string | null; 
+/**
+ * Optional: Override epic title
+ */
+title_override: string | null; 
+/**
+ * Optional: Agent to use for planning (default: claude)
+ */
+planning_agent: string | null }
+/**
+ * Result of the planning operation
+ */
+export type PlanResult = { 
+/**
+ * Created Epic info
+ */
+epic: EpicInfo; 
+/**
+ * Created sub-issues
+ */
+sub_issues: SubIssueInfo[]; 
+/**
+ * Agent used for planning
+ */
+planning_agent: string; 
+/**
+ * Summary of what was created
+ */
+summary: string }
 export type PostProcessProvider = { id: string; label: string; base_url: string; allow_base_url_edit?: boolean; models_endpoint?: string | null }
 /**
  * PR check status.
@@ -2277,6 +2529,27 @@ export type SessionStatus =
 export type ShortcutBinding = { id: string; name: string; description: string; default_binding: string; current_binding: string }
 export type SoundTheme = "marimba" | "pop" | "custom"
 /**
+ * Configuration for spawning an agent from a GitHub issue
+ */
+export type SpawnAgentConfig = { 
+/**
+ * Issue reference (e.g., "org/Handy#101")
+ */
+issue_ref: string; 
+/**
+ * Override agent type (if not specified in issue body)
+ */
+agent_type: string | null; 
+/**
+ * Custom session name (if not auto-generated)
+ */
+session_name: string | null; 
+/**
+ * Work repository (where code lives and agent works)
+ * If None, extracts from issue body or uses issue_ref repo
+ */
+work_repo: string | null }
+/**
  * Result of spawning an agent.
  */
 export type SpawnResult = { 
@@ -2296,6 +2569,75 @@ session_name: string;
  * Machine ID where agent is running
  */
 machine_id: string }
+/**
+ * Configuration for creating a sub-issue
+ */
+export type SubIssueConfig = { 
+/**
+ * Sub-issue title (e.g., "Implement test_agent_spawning.rs")
+ */
+title: string; 
+/**
+ * Phase number (1-indexed)
+ */
+phase: number; 
+/**
+ * Estimated time (e.g., "6 hours", "2 days")
+ */
+estimated_time: string; 
+/**
+ * Dependencies (other sub-issue titles or "None")
+ */
+dependencies: string; 
+/**
+ * Goal description (1-2 sentences)
+ */
+goal: string; 
+/**
+ * Detailed task breakdown (markdown)
+ */
+tasks: string; 
+/**
+ * Acceptance criteria (checkbox list)
+ */
+acceptance_criteria: string[]; 
+/**
+ * Recommended agent type
+ */
+agent_type: string; 
+/**
+ * Work repository (where agent will work)
+ * If None, inherits from Epic
+ */
+work_repo: string | null }
+/**
+ * Information about a created sub-issue
+ */
+export type SubIssueInfo = { 
+/**
+ * Issue number
+ */
+issue_number: number; 
+/**
+ * Issue title
+ */
+title: string; 
+/**
+ * Phase number
+ */
+phase: number; 
+/**
+ * Recommended agent type
+ */
+agent_type: string; 
+/**
+ * Work repository (where agent will work)
+ */
+work_repo: string; 
+/**
+ * GitHub issue URL
+ */
+url: string }
 export type SupabaseSession = { access_token: string; refresh_token: string; expires_at: number; user_id: string; email: string | null; 
 /**
  * User's display name from OAuth provider

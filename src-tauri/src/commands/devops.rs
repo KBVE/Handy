@@ -555,3 +555,70 @@ pub fn set_enabled_agents(app: AppHandle, agents: Vec<String>) -> Vec<String> {
     settings::write_settings(&app, app_settings);
     result
 }
+
+// ===== Epic Workflow Operations =====
+
+/// Create a new epic issue with standardized structure
+#[tauri::command]
+#[specta::specta]
+pub async fn create_epic(
+    config: crate::devops::operations::EpicConfig,
+) -> Result<crate::devops::operations::EpicInfo, String> {
+    crate::devops::operations::create_epic(config).await
+}
+
+/// Create multiple sub-issues for an epic in batch
+#[tauri::command]
+#[specta::specta]
+pub async fn create_sub_issues(
+    epic_number: u32,
+    epic_repo: String,
+    epic_work_repo: String,
+    sub_issues: Vec<crate::devops::operations::SubIssueConfig>,
+) -> Result<Vec<crate::devops::operations::SubIssueInfo>, String> {
+    crate::devops::operations::create_sub_issues(epic_number, epic_repo, epic_work_repo, sub_issues)
+        .await
+}
+
+/// Update epic issue progress based on sub-issue completion
+#[tauri::command]
+#[specta::specta]
+pub async fn update_epic_progress(
+    epic_number: u32,
+    epic_repo: String,
+) -> Result<crate::devops::operations::EpicProgress, String> {
+    crate::devops::operations::update_epic_progress(epic_number, epic_repo).await
+}
+
+/// Spawn an agent for a GitHub issue
+#[tauri::command]
+#[specta::specta]
+pub async fn spawn_agent_from_issue(
+    config: crate::devops::operations::SpawnAgentConfig,
+) -> Result<crate::devops::operations::AgentSpawnResult, String> {
+    crate::devops::operations::spawn_agent_from_issue(config).await
+}
+
+/// Complete agent work by creating a PR
+#[tauri::command]
+#[specta::specta]
+pub async fn complete_agent_work_with_pr(
+    session: String,
+    pr_title: Option<String>,
+) -> Result<crate::devops::operations::AgentCompletionResult, String> {
+    crate::devops::operations::complete_agent_work(session, pr_title).await
+}
+
+/// Plan an Epic from a markdown file using AI agent
+#[tauri::command]
+#[specta::specta]
+pub async fn plan_epic_from_markdown(
+    app: AppHandle,
+    config: crate::devops::operations::PlanFromMarkdownConfig,
+) -> Result<crate::devops::operations::PlanResult, String> {
+    // Get enabled agents from settings
+    let app_settings = crate::settings::get_settings(&app);
+    let enabled_agents = app_settings.enabled_agents;
+
+    crate::devops::operations::plan_from_markdown(config, enabled_agents).await
+}

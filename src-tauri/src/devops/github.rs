@@ -1135,6 +1135,199 @@ pub fn close_pr(repo: &str, number: u64, comment: Option<&str>) -> Result<(), St
     Ok(())
 }
 
+// ===== Async Wrappers for Operations Module =====
+
+/// Async wrapper for add labels (using update_labels)
+pub async fn add_labels_async(
+    repo: &str,
+    issue_number: u32,
+    labels: &[String],
+) -> Result<(), String> {
+    tokio::task::spawn_blocking({
+        let repo = repo.to_string();
+        let labels: Vec<String> = labels.to_vec();
+        move || {
+            let label_refs: Vec<&str> = labels.iter().map(|s| s.as_str()).collect();
+            update_labels(&repo, issue_number as u64, label_refs, vec![])
+        }
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// Async wrapper for add_comment
+pub async fn add_issue_comment_async(
+    repo: &str,
+    issue_number: u32,
+    comment: &str,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking({
+        let repo = repo.to_string();
+        let comment = comment.to_string();
+        move || add_comment(&repo, issue_number as u64, &comment)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// Async wrapper for get_issue
+pub async fn get_issue_async(repo: &str, issue_number: u32) -> Result<GitHubIssue, String> {
+    tokio::task::spawn_blocking({
+        let repo = repo.to_string();
+        move || get_issue(&repo, issue_number as u64)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// Async wrapper for list_issues
+pub async fn list_issues_async(
+    repo: &str,
+    labels: Vec<String>,
+) -> Result<Vec<GitHubIssue>, String> {
+    tokio::task::spawn_blocking({
+        let repo = repo.to_string();
+        move || {
+            let label_strs: Vec<&str> = labels.iter().map(|s| s.as_str()).collect();
+            list_issues(
+                &repo,
+                None,
+                if label_strs.is_empty() {
+                    None
+                } else {
+                    Some(label_strs)
+                },
+                None,
+            )
+        }
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// Async wrapper for create_issue
+pub async fn create_issue_async(repo: &str, title: &str, body: &str) -> Result<u32, String> {
+    tokio::task::spawn_blocking({
+        let repo = repo.to_string();
+        let title = title.to_string();
+        let body = body.to_string();
+        move || {
+            let issue = create_issue(&repo, &title, Some(&body), None)?;
+            Ok::<u32, String>(issue.number as u32)
+        }
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// Update issue body (currently not in existing code, so we'll implement it)
+pub async fn update_issue_body_async(
+    repo: &str,
+    issue_number: u32,
+    body: &str,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking({
+        let repo = repo.to_string();
+        let body = body.to_string();
+        move || {
+            // Use gh CLI to edit issue body
+            let output = std::process::Command::new("gh")
+                .args([
+                    "issue",
+                    "edit",
+                    &issue_number.to_string(),
+                    "--repo",
+                    &repo,
+                    "--body",
+                    &body,
+                ])
+                .output()
+                .map_err(|e| format!("Failed to execute gh: {}", e))?;
+
+            if !output.status.success() {
+                return Err(format!(
+                    "gh issue edit failed: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ));
+            }
+
+            Ok(())
+        }
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// Async wrapper for create_pr
+pub async fn create_pr_async(
+    repo: &str,
+    title: &str,
+    body: &str,
+    base: &str,
+    head: &str,
+) -> Result<String, String> {
+    tokio::task::spawn_blocking({
+        let repo = repo.to_string();
+        let title = title.to_string();
+        let body = body.to_string();
+        let base = base.to_string();
+        let head = head.to_string();
+        move || {
+            let pr = create_pr(&repo, &title, Some(&body), &base, Some(&head), false)?;
+            Ok::<String, String>(pr.url)
+        }
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// Add labels to a PR (currently not in existing code)
+pub async fn add_pr_labels_async(
+    repo: &str,
+    pr_url: &str,
+    labels: Vec<String>,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking({
+        let repo = repo.to_string();
+        let pr_url = pr_url.to_string();
+        move || {
+            // Extract PR number from URL
+            let pr_number = pr_url
+                .split('/')
+                .last()
+                .and_then(|s| s.parse::<u64>().ok())
+                .ok_or_else(|| format!("Invalid PR URL: {}", pr_url))?;
+
+            // Add each label
+            for label in &labels {
+                let output = std::process::Command::new("gh")
+                    .args([
+                        "pr",
+                        "edit",
+                        &pr_number.to_string(),
+                        "--repo",
+                        &repo,
+                        "--add-label",
+                        label,
+                    ])
+                    .output()
+                    .map_err(|e| format!("Failed to execute gh: {}", e))?;
+
+                if !output.status.success() {
+                    return Err(format!(
+                        "gh pr edit failed: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    ));
+                }
+            }
+
+            Ok(())
+        }
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -8,7 +8,12 @@ import { WorktreeManager } from "./WorktreeManager";
 import { IssueQueue } from "./IssueQueue";
 import { PullRequestPanel } from "./PullRequestPanel";
 import { AgentDashboard } from "./AgentDashboard";
-import { initializeDevOpsStore, cleanupDevOpsStore } from "@/stores/devopsStore";
+import { GenericEpicCreator } from "./GenericEpicCreator";
+import { MarkdownEpicPlanner } from "./MarkdownEpicPlanner";
+import {
+  initializeDevOpsStore,
+  cleanupDevOpsStore,
+} from "@/stores/devopsStore";
 import {
   Terminal,
   GitBranch,
@@ -237,6 +242,25 @@ export const DevOpsSettings: React.FC = () => {
           </div>
         ) : null}
       </SettingsGroup>
+
+      {/* Epic Workflow Management */}
+      {dependencies?.all_satisfied && (
+        <>
+          <SettingsGroup
+            title="Epic Workflow - Predefined Plans"
+            description="Create Epic issues from predefined templates"
+          >
+            <GenericEpicCreator />
+          </SettingsGroup>
+
+          <SettingsGroup
+            title="Epic Workflow - From Markdown"
+            description="AI-assisted Epic planning: analyze markdown plans and automatically generate Epic + Sub-issues"
+          >
+            <MarkdownEpicPlanner />
+          </SettingsGroup>
+        </>
+      )}
 
       {/* Active Agents Dashboard */}
       {dependencies?.all_satisfied && (

@@ -99,7 +99,6 @@ export const useDevOpsStore = create<DevOpsStore>()(
       const startState = get();
 
       if (showLoading && !startState.agentsLoading) {
-        console.log('[DevOps Store] Setting agentsLoading = true');
         set({ agentsLoading: true });
       }
 
@@ -111,19 +110,16 @@ export const useDevOpsStore = create<DevOpsStore>()(
           // Only update if data actually changed
           const dataChanged = JSON.stringify(currentState.agents) !== JSON.stringify(result.data);
           if (dataChanged) {
-            console.log('[DevOps Store] Agents data changed, updating');
             set({ agents: result.data });
           }
 
           // Clear error only if there was one
           if (currentState.agentsError !== null) {
-            console.log('[DevOps Store] Clearing agents error');
             set({ agentsError: null });
           }
         } else {
           // Only set error if it changed
           if (currentState.agentsError !== result.error) {
-            console.log('[DevOps Store] Setting agents error:', result.error);
             set({ agentsError: result.error });
           }
         }
@@ -131,14 +127,12 @@ export const useDevOpsStore = create<DevOpsStore>()(
         const errorMsg = err instanceof Error ? err.message : String(err);
         const currentState = get();
         if (currentState.agentsError !== errorMsg) {
-          console.log('[DevOps Store] Setting agents error from exception:', errorMsg);
           set({ agentsError: errorMsg });
         }
       } finally {
         if (showLoading) {
           const finalState = get();
           if (finalState.agentsLoading) {
-            console.log('[DevOps Store] Setting agentsLoading = false');
             set({ agentsLoading: false });
           }
         }
@@ -150,7 +144,6 @@ export const useDevOpsStore = create<DevOpsStore>()(
       const startState = get();
 
       if (showLoading && !startState.sessionsLoading) {
-        console.log('[DevOps Store] Setting sessionsLoading = true');
         set({ sessionsLoading: true });
       }
 
@@ -160,7 +153,6 @@ export const useDevOpsStore = create<DevOpsStore>()(
 
         // Only update if changed
         if (currentState.isTmuxRunning !== running) {
-          console.log('[DevOps Store] tmux running status changed:', running);
           set({ isTmuxRunning: running });
         }
 
@@ -175,7 +167,6 @@ export const useDevOpsStore = create<DevOpsStore>()(
           if (sessionResult.status === "ok") {
             const sessionsChanged = JSON.stringify(afterFetchState.sessions) !== JSON.stringify(sessionResult.data);
             if (sessionsChanged) {
-              console.log('[DevOps Store] Sessions data changed, updating');
               set({ sessions: sessionResult.data });
             }
           }
@@ -183,7 +174,6 @@ export const useDevOpsStore = create<DevOpsStore>()(
           if (recoveredResult.status === "ok") {
             const recoveredChanged = JSON.stringify(afterFetchState.recoveredSessions) !== JSON.stringify(recoveredResult.data);
             if (recoveredChanged) {
-              console.log('[DevOps Store] Recovered sessions changed, updating');
               set({ recoveredSessions: recoveredResult.data });
             }
           }
@@ -191,14 +181,12 @@ export const useDevOpsStore = create<DevOpsStore>()(
           // Clear error if it was set
           const finalState = get();
           if (finalState.sessionsError !== null) {
-            console.log('[DevOps Store] Clearing sessions error');
             set({ sessionsError: null });
           }
         } else {
           // Only update if not already empty
           const emptyState = get();
           if (emptyState.sessions.length > 0 || emptyState.recoveredSessions.length > 0) {
-            console.log('[DevOps Store] Clearing sessions (tmux not running)');
             set({ sessions: [], recoveredSessions: [] });
           }
         }
@@ -206,14 +194,12 @@ export const useDevOpsStore = create<DevOpsStore>()(
         const errorMsg = err instanceof Error ? err.message : String(err);
         const errorState = get();
         if (errorState.sessionsError !== errorMsg) {
-          console.log('[DevOps Store] Setting sessions error:', errorMsg);
           set({ sessionsError: errorMsg });
         }
       } finally {
         if (showLoading) {
           const finalState = get();
           if (finalState.sessionsLoading) {
-            console.log('[DevOps Store] Setting sessionsLoading = false');
             set({ sessionsLoading: false });
           }
         }

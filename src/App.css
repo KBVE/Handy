@@ -70,3 +70,76 @@
   stroke: var(--color-logo-stroke);
   stroke-width: 1;
 }
+
+/* Custom Scrollbar Styling */
+/* Works in WebKit browsers (Chrome, Safari, Edge) */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.3);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.5);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:active {
+  background: rgba(128, 128, 128, 0.7);
+  background-clip: padding-box;
+}
+
+/* Dark mode scrollbar with cyan accent */
+@media (prefers-color-scheme: dark) {
+  ::-webkit-scrollbar-thumb {
+    background: linear-gradient(
+      180deg,
+      rgba(34, 211, 238, 0.3) 0%,
+      rgba(168, 139, 250, 0.3) 100%
+    );
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(
+      180deg,
+      rgba(34, 211, 238, 0.5) 0%,
+      rgba(168, 139, 250, 0.5) 100%
+    );
+    background-clip: padding-box;
+  }
+
+  ::-webkit-scrollbar-thumb:active {
+    background: linear-gradient(
+      180deg,
+      rgba(34, 211, 238, 0.7) 0%,
+      rgba(168, 139, 250, 0.7) 100%
+    );
+    background-clip: padding-box;
+  }
+}
+
+/* Firefox scrollbar styling */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(128, 128, 128, 0.3) transparent;
+}
+
+@media (prefers-color-scheme: dark) {
+  * {
+    scrollbar-color: rgba(34, 211, 238, 0.4) transparent;
+  }
+}

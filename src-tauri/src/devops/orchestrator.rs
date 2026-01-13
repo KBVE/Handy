@@ -165,7 +165,8 @@ pub fn spawn_agent(config: &SpawnConfig, repo_path: &str) -> Result<SpawnResult,
 
 /// Get status of all active agents.
 pub fn list_agent_statuses() -> Result<Vec<AgentStatus>, String> {
-    let sessions = tmux::list_sessions()?;
+    // list_sessions() returns error if tmux isn't running, treat as empty list
+    let sessions = tmux::list_sessions().unwrap_or_else(|_| vec![]);
     let current_machine = get_current_machine_id();
     let mut statuses = Vec::new();
 

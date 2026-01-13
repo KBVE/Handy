@@ -119,7 +119,7 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
           {t("devops.sessions.activeCount", { count: sessions.length })}
         </span>
         <button
-          onClick={() => refreshSessions(true)}
+          onClick={() => refreshSessions(false)}
           disabled={isLoading}
           className="p-1 hover:bg-mid-gray/20 rounded transition-colors"
           title={t("devops.refresh")}

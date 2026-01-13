@@ -151,7 +151,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({
             </button>
           </div>
           <button
-            onClick={() => refreshAgents(true)}
+            onClick={() => refreshAgents(false)}
             disabled={isLoading}
             className="p-1 hover:bg-mid-gray/20 rounded transition-colors"
             title={t("devops.refresh")}

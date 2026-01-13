@@ -486,6 +486,17 @@
       "ttsDescription": "Text-to-speech engine for voice responses.",
       "discordDescription": "Discord bot for voice channel integration.",
       "memoryDescription": "Long-term memory storage for conversation context."
+    },
+    "devops": {
+      "title": "DevOps",
+      "tmuxServer": "tmux Server",
+      "running": "Running",
+      "stopped": "Stopped",
+      "totalAgents": "Total Agents",
+      "localAgents": "Local",
+      "remoteAgents": "Remote",
+      "machineId": "Machine ID",
+      "description": "Multi-agent orchestration system for automated code development."
     }
   },
   "common": {

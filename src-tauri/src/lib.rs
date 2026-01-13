@@ -362,6 +362,14 @@ fn initialize_core_logic(app_handle: &AppHandle) {
 
     // Create the recording overlay window (hidden by default)
     utils::create_recording_overlay(app_handle);
+
+    // Ensure master tmux session exists for DevOps orchestration
+    if let Err(e) = devops::tmux::ensure_master_session() {
+        log::warn!("Failed to create master tmux session: {}", e);
+        // Don't fail initialization if tmux isn't available
+    } else {
+        log::info!("Master tmux session initialized");
+    }
 }
 
 #[tauri::command]
@@ -542,6 +550,7 @@ pub fn run() {
         commands::devops::send_tmux_command,
         commands::devops::recover_tmux_sessions,
         commands::devops::is_tmux_running,
+        commands::devops::ensure_master_tmux_session,
         commands::devops::list_git_worktrees,
         commands::devops::get_git_worktree_info,
         commands::devops::check_worktree_collision,

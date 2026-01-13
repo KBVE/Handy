@@ -1251,6 +1251,18 @@ async isTmuxRunning() : Promise<boolean> {
     return await TAURI_INVOKE("is_tmux_running");
 },
 /**
+ * Ensure a master tmux session exists for orchestration.
+ * Returns true if the session was created, false if it already exists.
+ */
+async ensureMasterTmuxSession() : Promise<Result<boolean, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("ensure_master_tmux_session") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * List all git worktrees in a repository.
  */
 async listGitWorktrees(repoPath: string) : Promise<Result<WorktreeInfo[], string>> {

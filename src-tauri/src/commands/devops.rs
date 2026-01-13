@@ -97,6 +97,14 @@ pub fn is_tmux_running() -> bool {
     tmux::is_tmux_running()
 }
 
+/// Ensure a master tmux session exists for orchestration.
+/// Returns true if the session was created, false if it already exists.
+#[tauri::command]
+#[specta::specta]
+pub fn ensure_master_tmux_session() -> Result<bool, String> {
+    tmux::ensure_master_session()
+}
+
 // ============================================================================
 // Git Worktree Commands
 // ============================================================================

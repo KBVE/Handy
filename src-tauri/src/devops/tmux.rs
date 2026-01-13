@@ -458,6 +458,37 @@ pub fn session_name_manual(suffix: &str) -> String {
     format!("{}manual-{}", SESSION_PREFIX, suffix)
 }
 
+/// Ensure a master tmux session exists for orchestration and management.
+/// This session serves as a persistent handler for background tasks.
+/// Returns Ok(true) if the session was created, Ok(false) if it already exists.
+pub fn ensure_master_session() -> Result<bool, String> {
+    const MASTER_SESSION: &str = "handy-master";
+
+    // Check if master session already exists
+    let sessions = list_sessions()?;
+    let exists = sessions.iter().any(|s| s.name == MASTER_SESSION);
+
+    if exists {
+        return Ok(false);
+    }
+
+    // Create master session with minimal metadata
+    let metadata = AgentMetadata {
+        session: MASTER_SESSION.to_string(),
+        issue_ref: None,
+        repo: None,
+        worktree: None,
+        agent_type: "master".to_string(),
+        machine_id: get_machine_id(),
+        started_at: chrono::Utc::now().to_rfc3339(),
+    };
+
+    create_session(MASTER_SESSION, None, &metadata)?;
+    log::info!("Created master tmux session: {}", MASTER_SESSION);
+
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

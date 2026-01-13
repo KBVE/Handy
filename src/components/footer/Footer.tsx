@@ -4,6 +4,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import ModelSelector from "../model-selector";
 import UpdateChecker from "../update-checker";
 import SidecarStatus from "./SidecarStatus";
+import DevOpsStatus from "./DevOpsStatus";
 import UserAvatar from "../auth/UserAvatar";
 
 const Footer: React.FC = () => {
@@ -36,6 +37,8 @@ const Footer: React.FC = () => {
           <ModelSelector />
           <span className="text-text/30">|</span>
           <SidecarStatus />
+          <span className="text-text/30">|</span>
+          <DevOpsStatus />
         </div>
 
         {/* Right side: User Avatar, Update Status, Version */}

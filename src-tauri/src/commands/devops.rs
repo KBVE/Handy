@@ -9,7 +9,7 @@ use crate::devops::{
     orchestrator::{
         self, AgentStatus, CompleteWorkResult, SpawnConfig, SpawnResult, WorkflowConfig,
     },
-    tmux::{self, AgentMetadata, RecoveredSession, TmuxSession},
+    tmux::{self, AgentMetadata, RecoveredSession, RecoveryResult, TmuxSession},
     worktree::{self, CollisionCheck, WorktreeConfig, WorktreeCreateResult, WorktreeInfo},
     DevOpsDependencies,
 };
@@ -206,6 +206,31 @@ pub fn send_tmux_keys(session_name: String, keys: String) -> Result<(), String> 
 #[specta::specta]
 pub fn recover_tmux_sessions() -> Result<Vec<RecoveredSession>, String> {
     tmux::recover_sessions()
+}
+
+/// Restart an agent in an existing tmux session.
+///
+/// Use this for recovery when a session exists but the agent process has stopped.
+/// This reads the session metadata and restarts the appropriate agent command.
+#[tauri::command]
+#[specta::specta]
+pub fn restart_agent_in_session(session_name: String) -> Result<(), String> {
+    tmux::restart_agent(&session_name)
+}
+
+/// Recover all sessions that need attention.
+///
+/// - `auto_restart`: If true, automatically restart agents in stopped sessions
+/// - `auto_cleanup`: If true, automatically kill orphaned sessions (no worktree)
+///
+/// Returns results for each session that was processed.
+#[tauri::command]
+#[specta::specta]
+pub fn recover_all_agent_sessions(
+    auto_restart: bool,
+    auto_cleanup: bool,
+) -> Result<Vec<RecoveryResult>, String> {
+    tmux::recover_all_sessions(auto_restart, auto_cleanup)
 }
 
 /// Check if tmux server is running.

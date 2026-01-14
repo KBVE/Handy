@@ -552,6 +552,8 @@ pub fn run() {
         commands::devops::send_tmux_command,
         commands::devops::send_tmux_keys,
         commands::devops::recover_tmux_sessions,
+        commands::devops::restart_agent_in_session,
+        commands::devops::recover_all_agent_sessions,
         commands::devops::is_tmux_running,
         commands::devops::ensure_master_tmux_session,
         commands::devops::list_git_worktrees,

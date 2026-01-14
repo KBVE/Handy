@@ -1287,6 +1287,36 @@ async recoverTmuxSessions() : Promise<Result<RecoveredSession[], string>> {
 }
 },
 /**
+ * Restart an agent in an existing tmux session.
+ * 
+ * Use this for recovery when a session exists but the agent process has stopped.
+ * This reads the session metadata and restarts the appropriate agent command.
+ */
+async restartAgentInSession(sessionName: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("restart_agent_in_session", { sessionName }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Recover all sessions that need attention.
+ * 
+ * - `auto_restart`: If true, automatically restart agents in stopped sessions
+ * - `auto_cleanup`: If true, automatically kill orphaned sessions (no worktree)
+ * 
+ * Returns results for each session that was processed.
+ */
+async recoverAllAgentSessions(autoRestart: boolean, autoCleanup: boolean) : Promise<Result<RecoveryResult[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("recover_all_agent_sessions", { autoRestart, autoCleanup }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Check if tmux server is running.
  */
 async isTmuxRunning() : Promise<boolean> {
@@ -2755,6 +2785,26 @@ export type RecoveryAction =
  * completed normally, nothing to do
  */
 "None"
+/**
+ * Result of attempting to recover/restart sessions
+ */
+export type RecoveryResult = { 
+/**
+ * Session name
+ */
+session: string; 
+/**
+ * Whether recovery was successful
+ */
+success: boolean; 
+/**
+ * Action that was taken
+ */
+action: RecoveryAction; 
+/**
+ * Error message if recovery failed
+ */
+error: string | null }
 /**
  * Source of recovered session information
  */

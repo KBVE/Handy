@@ -473,6 +473,108 @@ pub fn recover_sessions() -> Result<Vec<RecoveredSession>, String> {
     Ok(recovered)
 }
 
+/// Result of attempting to recover/restart sessions
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct RecoveryResult {
+    /// Session name
+    pub session: String,
+    /// Whether recovery was successful
+    pub success: bool,
+    /// Action that was taken
+    pub action: RecoveryAction,
+    /// Error message if recovery failed
+    pub error: Option<String>,
+}
+
+/// Attempt to recover all sessions that need attention.
+///
+/// For sessions with `RecoveryAction::Restart`, this will restart the agent.
+/// For sessions with `RecoveryAction::Cleanup`, this will kill the session.
+/// Sessions with `RecoveryAction::Resume` are left as-is (already running).
+///
+/// Returns results for each session that was processed.
+pub fn recover_all_sessions(auto_restart: bool, auto_cleanup: bool) -> Result<Vec<RecoveryResult>, String> {
+    let sessions = recover_sessions()?;
+    let mut results = Vec::new();
+
+    for session in sessions {
+        let result = match session.recommended_action {
+            RecoveryAction::Resume => {
+                // Already running, nothing to do
+                RecoveryResult {
+                    session: session.metadata.session.clone(),
+                    success: true,
+                    action: RecoveryAction::Resume,
+                    error: None,
+                }
+            }
+            RecoveryAction::Restart => {
+                if auto_restart {
+                    match restart_agent(&session.metadata.session) {
+                        Ok(()) => RecoveryResult {
+                            session: session.metadata.session.clone(),
+                            success: true,
+                            action: RecoveryAction::Restart,
+                            error: None,
+                        },
+                        Err(e) => RecoveryResult {
+                            session: session.metadata.session.clone(),
+                            success: false,
+                            action: RecoveryAction::Restart,
+                            error: Some(e),
+                        },
+                    }
+                } else {
+                    RecoveryResult {
+                        session: session.metadata.session.clone(),
+                        success: false,
+                        action: RecoveryAction::Restart,
+                        error: Some("Auto-restart disabled".to_string()),
+                    }
+                }
+            }
+            RecoveryAction::Cleanup => {
+                if auto_cleanup {
+                    match kill_session(&session.metadata.session) {
+                        Ok(()) => RecoveryResult {
+                            session: session.metadata.session.clone(),
+                            success: true,
+                            action: RecoveryAction::Cleanup,
+                            error: None,
+                        },
+                        Err(e) => RecoveryResult {
+                            session: session.metadata.session.clone(),
+                            success: false,
+                            action: RecoveryAction::Cleanup,
+                            error: Some(e),
+                        },
+                    }
+                } else {
+                    RecoveryResult {
+                        session: session.metadata.session.clone(),
+                        success: false,
+                        action: RecoveryAction::Cleanup,
+                        error: Some("Auto-cleanup disabled".to_string()),
+                    }
+                }
+            }
+            RecoveryAction::None => {
+                // Nothing to do
+                RecoveryResult {
+                    session: session.metadata.session.clone(),
+                    success: true,
+                    action: RecoveryAction::None,
+                    error: None,
+                }
+            }
+        };
+
+        results.push(result);
+    }
+
+    Ok(results)
+}
+
 /// Build the command to start an agent based on type and context
 ///
 /// Returns the shell command that should be sent to the tmux session

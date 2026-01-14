@@ -907,3 +907,112 @@ pub async fn load_epic_for_recovery(
 ) -> Result<crate::devops::operations::EpicRecoveryInfo, String> {
     crate::devops::operations::load_epic_for_recovery(repo, epic_number).await
 }
+
+// ============================================================================
+// Docker Sandbox Commands
+// ============================================================================
+
+/// Check if Docker is available and daemon is running
+#[tauri::command]
+#[specta::specta]
+pub fn is_docker_available() -> bool {
+    crate::devops::docker::is_docker_available()
+}
+
+/// Spawn a sandboxed agent in a Docker container
+///
+/// This creates an isolated container where the agent can run with
+/// auto-accept permissions safely. The container has:
+/// - The worktree mounted at /workspace
+/// - GitHub and Anthropic credentials passed as env vars
+/// - Resource limits applied
+#[tauri::command]
+#[specta::specta]
+pub fn spawn_sandbox(
+    config: crate::devops::docker::SandboxConfig,
+) -> Result<crate::devops::docker::SandboxResult, String> {
+    crate::devops::docker::spawn_sandbox(&config)
+}
+
+/// Get status of a sandbox container
+#[tauri::command]
+#[specta::specta]
+pub fn get_sandbox_status(
+    container_name: String,
+) -> Result<crate::devops::docker::SandboxStatus, String> {
+    crate::devops::docker::get_sandbox_status(&container_name)
+}
+
+/// Get logs from a sandbox container
+#[tauri::command]
+#[specta::specta]
+pub fn get_sandbox_logs(
+    container_name: String,
+    tail: Option<u32>,
+) -> Result<String, String> {
+    crate::devops::docker::get_sandbox_logs(&container_name, tail)
+}
+
+/// Stop a sandbox container
+#[tauri::command]
+#[specta::specta]
+pub fn stop_sandbox(container_name: String) -> Result<(), String> {
+    crate::devops::docker::stop_sandbox(&container_name)
+}
+
+/// Remove a sandbox container
+#[tauri::command]
+#[specta::specta]
+pub fn remove_sandbox(container_name: String, force: bool) -> Result<(), String> {
+    crate::devops::docker::remove_sandbox(&container_name, force)
+}
+
+/// List all Handy sandbox containers
+#[tauri::command]
+#[specta::specta]
+pub fn list_sandboxes() -> Result<Vec<crate::devops::docker::SandboxStatus>, String> {
+    crate::devops::docker::list_sandboxes()
+}
+
+/// Check if devcontainer CLI is available
+#[tauri::command]
+#[specta::specta]
+pub fn is_devcontainer_cli_available() -> bool {
+    crate::devops::docker::is_devcontainer_cli_available()
+}
+
+/// Setup a devcontainer configuration for a worktree
+///
+/// Creates a .devcontainer/devcontainer.json file with the official
+/// Anthropic Claude Code feature configured.
+#[tauri::command]
+#[specta::specta]
+pub fn setup_devcontainer(
+    worktree_path: String,
+    issue_ref: String,
+    gh_token: Option<String>,
+    anthropic_key: Option<String>,
+) -> Result<String, String> {
+    crate::devops::docker::setup_devcontainer_for_worktree(
+        &worktree_path,
+        &issue_ref,
+        gh_token.as_deref(),
+        anthropic_key.as_deref(),
+    )
+}
+
+/// Start a devcontainer for a workspace
+///
+/// Uses the devcontainer CLI to build and start the container.
+#[tauri::command]
+#[specta::specta]
+pub fn start_devcontainer(worktree_path: String) -> Result<String, String> {
+    crate::devops::docker::start_devcontainer(&worktree_path)
+}
+
+/// Execute a command inside a running devcontainer
+#[tauri::command]
+#[specta::specta]
+pub fn exec_in_devcontainer(worktree_path: String, command: String) -> Result<String, String> {
+    crate::devops::docker::exec_in_devcontainer(&worktree_path, &command)
+}

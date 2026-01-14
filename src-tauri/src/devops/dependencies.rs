@@ -34,6 +34,8 @@ pub struct DevOpsDependencies {
     pub gh: DependencyStatus,
     /// tmux status (required)
     pub tmux: DependencyStatus,
+    /// Docker status (optional, enables sandboxed agents)
+    pub docker: DependencyStatus,
     /// Claude Code CLI status
     pub claude: DependencyStatus,
     /// Aider CLI status
@@ -48,6 +50,8 @@ pub struct DevOpsDependencies {
     pub all_satisfied: bool,
     /// List of available agent types that are installed
     pub available_agents: Vec<String>,
+    /// Whether sandboxed (Docker) agents are available
+    pub sandbox_available: bool,
 }
 
 /// Check if a command exists and get its version
@@ -330,10 +334,44 @@ fn check_vllm() -> DependencyStatus {
     }
 }
 
+/// Check Docker status
+fn check_docker() -> DependencyStatus {
+    let (installed, version, path) = check_command("docker", &["--version"]);
+
+    // Parse version from "Docker version 24.0.7, build afdd53b" format
+    let version = version.and_then(|v| {
+        v.split_whitespace()
+            .nth(2)
+            .map(|s| s.trim_end_matches(',').to_string())
+    });
+
+    // Check if Docker daemon is running
+    let daemon_running = if installed {
+        run_command_with_timeout("docker", &["info"], 5)
+            .map(|(success, _)| success)
+            .unwrap_or(false)
+    } else {
+        false
+    };
+
+    DependencyStatus {
+        name: "docker".to_string(),
+        installed,
+        // Use authenticated field to indicate daemon is running
+        authenticated: if installed { Some(daemon_running) } else { None },
+        auth_user: None,
+        auth_hint_url: None,
+        version,
+        path,
+        install_hint: "Install Docker Desktop from https://docker.com".to_string(),
+    }
+}
+
 /// Check all DevOps dependencies
 pub fn check_all_dependencies() -> DevOpsDependencies {
     let gh = check_gh();
     let tmux = check_tmux();
+    let docker = check_docker();
     let claude = check_claude();
     let aider = check_aider();
     let gemini = check_gemini();
@@ -362,9 +400,13 @@ pub fn check_all_dependencies() -> DevOpsDependencies {
     let has_agent = !available_agents.is_empty();
     let all_satisfied = gh.installed && tmux.installed && has_agent;
 
+    // Sandbox is available if Docker is installed and daemon is running
+    let sandbox_available = docker.installed && docker.authenticated.unwrap_or(false);
+
     DevOpsDependencies {
         gh,
         tmux,
+        docker,
         claude,
         aider,
         gemini,
@@ -372,6 +414,7 @@ pub fn check_all_dependencies() -> DevOpsDependencies {
         vllm,
         all_satisfied,
         available_agents,
+        sandbox_available,
     }
 }
 

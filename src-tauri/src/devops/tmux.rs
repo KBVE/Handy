@@ -262,9 +262,9 @@ pub fn create_session(
     working_dir: Option<&str>,
     metadata: &AgentMetadata,
 ) -> Result<(), String> {
-    // Validate session name
-    if !session_name.starts_with(SESSION_PREFIX) {
-        return Err(format!("Session name must start with '{}'", SESSION_PREFIX));
+    // Validate session name - must start with handy- prefix (agents or master)
+    if !session_name.starts_with(HANDY_PREFIX) {
+        return Err(format!("Session name must start with '{}'", HANDY_PREFIX));
     }
 
     // Check if session already exists
@@ -387,19 +387,41 @@ pub fn get_session_output(session_name: &str, lines: Option<u32>) -> Result<Stri
 }
 
 /// Send a command to a session
+/// If the command is empty, sends just Enter key
+/// Special key sequences: Enter, Escape, Tab, Space, BSpace, Up, Down, Left, Right, etc.
 pub fn send_command(session_name: &str, command: &str) -> Result<(), String> {
+    let mut args = vec!["-L", SOCKET_NAME, "send-keys", "-t", session_name];
+
+    // If empty command, just send Enter
+    if command.is_empty() {
+        args.push("Enter");
+    } else {
+        args.push(command);
+        args.push("Enter");
+    }
+
     let output = Command::new("tmux")
-        .args([
-            "-L",
-            SOCKET_NAME,
-            "send-keys",
-            "-t",
-            session_name,
-            command,
-            "Enter",
-        ])
+        .args(&args)
         .output()
         .map_err(|e| format!("Failed to send command: {}", e))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "tmux error: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    Ok(())
+}
+
+/// Send raw keys to a session without appending Enter
+/// Use this for special keys like Escape, Tab, or partial input
+pub fn send_keys(session_name: &str, keys: &str) -> Result<(), String> {
+    let output = Command::new("tmux")
+        .args(["-L", SOCKET_NAME, "send-keys", "-t", session_name, keys])
+        .output()
+        .map_err(|e| format!("Failed to send keys: {}", e))?;
 
     if !output.status.success() {
         return Err(format!(
@@ -477,18 +499,26 @@ pub fn ensure_master_session() -> Result<bool, String> {
     }
     // If list_sessions() failed, tmux server isn't running - we'll create the master session
 
-    // Create master session with minimal metadata
-    let metadata = AgentMetadata {
-        session: MASTER_SESSION.to_string(),
-        issue_ref: None,
-        repo: None,
-        worktree: None,
-        agent_type: "master".to_string(),
-        machine_id: get_machine_id(),
-        started_at: chrono::Utc::now().to_rfc3339(),
-    };
+    // Create master session directly (bypassing create_session to avoid list_sessions check)
+    let output = Command::new("tmux")
+        .args(["-L", SOCKET_NAME, "new-session", "-d", "-s", MASTER_SESSION])
+        .output()
+        .map_err(|e| format!("Failed to create master session: {}", e))?;
 
-    create_session(MASTER_SESSION, None, &metadata)?;
+    if !output.status.success() {
+        return Err(format!(
+            "tmux error: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    // Set metadata for the master session
+    let machine_id = get_machine_id();
+    let started_at = chrono::Utc::now().to_rfc3339();
+    set_session_env(MASTER_SESSION, ENV_AGENT_TYPE, "master")?;
+    set_session_env(MASTER_SESSION, ENV_MACHINE_ID, &machine_id)?;
+    set_session_env(MASTER_SESSION, ENV_STARTED_AT, &started_at)?;
+
     log::info!("Created master tmux session: {}", MASTER_SESSION);
 
     Ok(true)

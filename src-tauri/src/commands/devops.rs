@@ -17,10 +17,119 @@ use crate::settings;
 use tauri::AppHandle;
 
 /// Check if required DevOps dependencies (gh, tmux) are installed.
+/// Runs in a blocking task to avoid freezing the UI.
 #[tauri::command]
 #[specta::specta]
-pub fn check_devops_dependencies() -> DevOpsDependencies {
-    check_all_dependencies()
+pub async fn check_devops_dependencies() -> Result<DevOpsDependencies, String> {
+    tokio::task::spawn_blocking(check_all_dependencies)
+        .await
+        .map_err(|e| format!("Failed to check dependencies: {}", e))
+}
+
+/// Launch authentication flow for a CLI tool by creating a tmux session.
+/// Returns the session name so the user can attach to it.
+#[tauri::command]
+#[specta::specta]
+pub fn launch_cli_auth(tool_name: String) -> Result<String, String> {
+    // Use the same socket name as other Handy tmux sessions
+    const SOCKET_NAME: &str = "handy";
+
+    let session_name = format!("handy-auth-{}", tool_name);
+
+    // Determine the command to run based on the tool
+    let auth_command = match tool_name.as_str() {
+        "gh" => "gh auth login",
+        "claude" => "claude",
+        _ => return Err(format!("Unknown tool: {}", tool_name)),
+    };
+
+    // Create a tmux session that runs the auth command
+    // The session will stay open so the user can complete the OAuth flow
+    let result = std::process::Command::new("tmux")
+        .args([
+            "-L",
+            SOCKET_NAME,
+            "new-session",
+            "-d",
+            "-s",
+            &session_name,
+            "-x",
+            "120",
+            "-y",
+            "30",
+            auth_command,
+        ])
+        .output();
+
+    match result {
+        Ok(output) => {
+            if output.status.success() {
+                // Open Terminal.app and attach to the session
+                let _ = std::process::Command::new("open")
+                    .args(["-a", "Terminal"])
+                    .spawn();
+
+                // Give Terminal a moment to open, then attach
+                std::thread::sleep(std::time::Duration::from_millis(500));
+
+                // Attach using the same socket
+                let _ = std::process::Command::new("osascript")
+                    .args([
+                        "-e",
+                        &format!(
+                            "tell application \"Terminal\" to do script \"tmux -L {} attach-session -t {}\"",
+                            SOCKET_NAME,
+                            session_name
+                        ),
+                    ])
+                    .spawn();
+
+                Ok(session_name)
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                Err(format!("Failed to create auth session: {}", stderr))
+            }
+        }
+        Err(e) => Err(format!("Failed to run tmux: {}", e)),
+    }
+}
+
+/// Attach to an existing tmux session by opening Terminal.app.
+#[tauri::command]
+#[specta::specta]
+pub fn attach_tmux_session(session_name: String) -> Result<(), String> {
+    const SOCKET_NAME: &str = "handy";
+
+    // Open Terminal.app
+    let _ = std::process::Command::new("open")
+        .args(["-a", "Terminal"])
+        .spawn();
+
+    // Give Terminal a moment to open, then attach
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    // Attach to the session using the handy socket
+    let result = std::process::Command::new("osascript")
+        .args([
+            "-e",
+            &format!(
+                "tell application \"Terminal\" to do script \"tmux -L {} attach-session -t {}\"",
+                SOCKET_NAME, session_name
+            ),
+        ])
+        .output();
+
+    match result {
+        Ok(output) => {
+            if output.status.success() {
+                Ok(())
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                Err(format!("Failed to attach to session: {}", stderr))
+            }
+        }
+        Err(e) => Err(format!("Failed to run osascript: {}", e)),
+    }
 }
 
 /// List all Handy agent tmux sessions.
@@ -76,11 +185,20 @@ pub fn get_tmux_session_output(session_name: String, lines: Option<u32>) -> Resu
     tmux::get_session_output(&session_name, lines)
 }
 
-/// Send a command to a tmux session.
+/// Send a command to a tmux session (appends Enter key).
+/// If command is empty, sends just Enter key.
 #[tauri::command]
 #[specta::specta]
 pub fn send_tmux_command(session_name: String, command: String) -> Result<(), String> {
     tmux::send_command(&session_name, &command)
+}
+
+/// Send raw keys to a tmux session without appending Enter.
+/// Use for special keys: Enter, Escape, Tab, Space, BSpace, Up, Down, Left, Right, C-c, etc.
+#[tauri::command]
+#[specta::specta]
+pub fn send_tmux_keys(session_name: String, keys: String) -> Result<(), String> {
+    tmux::send_keys(&session_name, &keys)
 }
 
 /// Recover agent sessions on startup.

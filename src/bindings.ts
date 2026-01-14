@@ -1163,9 +1163,38 @@ async listMemoryUsers() : Promise<Result<MemoryUserInfo[], string>> {
 },
 /**
  * Check if required DevOps dependencies (gh, tmux) are installed.
+ * Runs in a blocking task to avoid freezing the UI.
  */
-async checkDevopsDependencies() : Promise<DevOpsDependencies> {
-    return await TAURI_INVOKE("check_devops_dependencies");
+async checkDevopsDependencies() : Promise<Result<DevOpsDependencies, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("check_devops_dependencies") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Launch authentication flow for a CLI tool by creating a tmux session.
+ * Returns the session name so the user can attach to it.
+ */
+async launchCliAuth(toolName: string) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("launch_cli_auth", { toolName }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Attach to an existing tmux session by opening Terminal.app.
+ */
+async attachTmuxSession(sessionName: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("attach_tmux_session", { sessionName }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 },
 /**
  * List all Handy agent tmux sessions.
@@ -1223,11 +1252,24 @@ async getTmuxSessionOutput(sessionName: string, lines: number | null) : Promise<
 }
 },
 /**
- * Send a command to a tmux session.
+ * Send a command to a tmux session (appends Enter key).
+ * If command is empty, sends just Enter key.
  */
 async sendTmuxCommand(sessionName: string, command: string) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("send_tmux_command", { sessionName, command }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Send raw keys to a tmux session without appending Enter.
+ * Use for special keys: Enter, Escape, Tab, Space, BSpace, Up, Down, Left, Right, C-c, etc.
+ */
+async sendTmuxKeys(sessionName: string, keys: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("send_tmux_keys", { sessionName, keys }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -1967,6 +2009,18 @@ name: string;
  * Whether the dependency is installed
  */
 installed: boolean; 
+/**
+ * Whether the dependency is authenticated (for tools that require auth)
+ */
+authenticated: boolean | null; 
+/**
+ * Username/account if authenticated
+ */
+auth_user: string | null; 
+/**
+ * Authentication hint URL if not authenticated
+ */
+auth_hint_url: string | null; 
 /**
  * Version string if installed
  */

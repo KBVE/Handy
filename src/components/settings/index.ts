@@ -13,6 +13,7 @@ export { DiscordSettings } from "./discord/DiscordSettings";
 export { MemorySettings } from "./memory/MemorySettings";
 export { CredentialsSettings } from "./credentials/CredentialsSettings";
 export { DevOpsSettings } from "./devops/DevOpsSettings";
+export { DevOpsLayout } from "./devops/DevOpsLayout";
 
 // Individual setting components
 export { MicrophoneSelector } from "./MicrophoneSelector";

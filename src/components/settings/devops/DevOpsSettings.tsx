@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { commands, DevOpsDependencies } from "@/bindings";
 import { SettingsGroup } from "../../ui/SettingsGroup";
@@ -42,8 +42,12 @@ export const DevOpsSettings: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const deps = await commands.checkDevopsDependencies();
-      setDependencies(deps);
+      const result = await commands.checkDevopsDependencies();
+      if (result.status === "ok") {
+        setDependencies(result.data);
+      } else {
+        setError(result.error);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -92,14 +96,33 @@ export const DevOpsSettings: React.FC = () => {
   const isAgentEnabled = (agentType: string) =>
     enabledAgents.includes(agentType);
 
+  const [launchingAuth, setLaunchingAuth] = useState<string | null>(null);
+
+  const handleLaunchAuth = async (toolName: string) => {
+    setLaunchingAuth(toolName);
+    try {
+      const result = await commands.launchCliAuth(toolName);
+      if (result.status === "ok") {
+        // Auth session launched successfully
+        // Refresh dependencies after a delay to check if user authenticated
+        setTimeout(() => {
+          checkDependencies();
+        }, 5000);
+      } else {
+        setError(result.error);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLaunchingAuth(null);
+    }
+  };
+
   return (
     <div className="max-w-3xl w-full mx-auto space-y-6">
-      {/* Header */}
+      {/* Description and refresh */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Terminal className="w-5 h-5 text-logo-primary" />
-          <h2 className="text-lg font-semibold">{t("devops.title")}</h2>
-        </div>
+        <p className="text-sm text-mid-gray">{t("devops.description")}</p>
         <button
           onClick={checkDependencies}
           disabled={isLoading}
@@ -113,9 +136,6 @@ export const DevOpsSettings: React.FC = () => {
           {t("devops.refresh")}
         </button>
       </div>
-
-      {/* Description */}
-      <p className="text-sm text-mid-gray">{t("devops.description")}</p>
 
       {/* Error state */}
       {error && (
@@ -164,6 +184,8 @@ export const DevOpsSettings: React.FC = () => {
               displayName="GitHub CLI"
               icon={<GitBranch className="w-4 h-4" />}
               status={dependencies.gh}
+              onLaunchAuth={() => handleLaunchAuth("gh")}
+              launchAuthDisabled={launchingAuth === "gh"}
             />
             <DependencyStatus
               name="tmux"
@@ -185,6 +207,8 @@ export const DevOpsSettings: React.FC = () => {
               isEnabled={isAgentEnabled("claude")}
               onToggle={(enabled) => handleAgentToggle("claude", enabled)}
               toggleDisabled={isTogglingAgent === "claude"}
+              onLaunchAuth={() => handleLaunchAuth("claude")}
+              launchAuthDisabled={launchingAuth === "claude"}
             />
             <DependencyStatus
               name="aider"

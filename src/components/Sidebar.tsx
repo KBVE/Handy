@@ -28,7 +28,7 @@ import {
   DiscordSettings,
   MemorySettings,
   CredentialsSettings,
-  DevOpsSettings,
+  DevOpsLayout,
 } from "./settings";
 
 export type SidebarSection = keyof typeof SECTIONS_CONFIG;
@@ -88,7 +88,7 @@ export const SECTIONS_CONFIG = {
   devops: {
     labelKey: "sidebar.devops",
     icon: Terminal,
-    component: DevOpsSettings,
+    component: DevOpsLayout,
     enabled: () => true,
   },
   advanced: {

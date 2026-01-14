@@ -831,6 +831,10 @@
     "title": "DevOps",
     "description": "Manage coding agents and multi-repo workflows. Requires debug mode enabled.",
     "refresh": "Refresh",
+    "tabs": {
+      "settings": "Settings",
+      "sessions": "Sessions"
+    },
     "dependencies": {
       "title": "Dependencies",
       "description": "Required CLI tools for DevOps features",
@@ -846,7 +850,24 @@
       "localLlm": "Local LLM Servers (optional)",
       "availableAgents": "Available agents",
       "enabledAgents": "Enabled agents",
-      "installFirst": "Install this tool first to enable it"
+      "installFirst": "Install this tool first to enable it",
+      "authenticatedAs": "Authenticated as",
+      "notAuthenticated": "Not authenticated",
+      "verifyInstance": "You need to verify your instance before using this tool.",
+      "launchAuth": "Launch Authentication",
+      "followGuide": "Follow the authentication guide"
+    },
+    "supportWorker": {
+      "sectionTitle": "Support Worker",
+      "sectionDescription": "A general-purpose helper agent for quick tasks and testing",
+      "title": "Support Worker",
+      "running": "Agent is running",
+      "stopped": "Agent is stopped",
+      "start": "Start Support Worker",
+      "stop": "Stop",
+      "attach": "Attach",
+      "description": "Start a general-purpose Claude agent for support tasks, quick questions, or testing. This worker runs in a tmux session and can be used for any ad-hoc assistance.",
+      "inputPlaceholder": "Send a message to the support worker..."
     },
     "sessions": {
       "title": "Agent Sessions",
@@ -858,7 +879,14 @@
       "noSessionsHint": "Sessions will appear here when you start coding agents",
       "activeCount": "{{count}} active session(s)",
       "attached": "Attached",
-      "kill": "Kill session",
+      "kill": "Kill",
+      "openTerminal": "Open in Terminal",
+      "noOutput": "No output yet...",
+      "expand": "Expand session",
+      "collapse": "Collapse",
+      "send": "Send message",
+      "sendPlaceholder": "Type a message to send to the agent...",
+      "quickKeys": "Quick keys:",
       "recoveryTitle": "Recovery Suggestions",
       "action": {
         "resume": "Session can be resumed",

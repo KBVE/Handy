@@ -744,7 +744,9 @@ pub async fn plan_epic_from_markdown(
 /// List all available Epic plan templates from docs/plans directory
 #[tauri::command]
 #[specta::specta]
-pub fn list_epic_plan_templates(app: AppHandle) -> Result<Vec<crate::devops::operations::PlanTemplate>, String> {
+pub fn list_epic_plan_templates(
+    app: AppHandle,
+) -> Result<Vec<crate::devops::operations::PlanTemplate>, String> {
     // In dev mode, look relative to current directory (project root)
     // In production, look relative to the app's resource directory
     #[cfg(debug_assertions)]
@@ -755,7 +757,8 @@ pub fn list_epic_plan_templates(app: AppHandle) -> Result<Vec<crate::devops::ope
 
         // Check if we're in src-tauri directory
         if current.ends_with("src-tauri") {
-            current.parent()
+            current
+                .parent()
                 .ok_or_else(|| "Could not find parent directory".to_string())?
                 .to_path_buf()
         } else {
@@ -764,9 +767,153 @@ pub fn list_epic_plan_templates(app: AppHandle) -> Result<Vec<crate::devops::ope
     };
 
     #[cfg(not(debug_assertions))]
-    let repo_root = app.path()
+    let repo_root = app
+        .path()
         .resource_dir()
         .map_err(|e| format!("Failed to get resource directory: {}", e))?;
 
     crate::devops::operations::list_plan_templates(&repo_root)
+}
+
+// ===== Pipeline Orchestration Commands =====
+
+/// Assign an issue to an agent, creating worktree and tmux session.
+#[tauri::command]
+#[specta::specta]
+pub fn assign_issue_to_agent_pipeline(
+    app: AppHandle,
+    config: crate::devops::orchestration::AssignIssueConfig,
+) -> Result<crate::devops::orchestration::AssignIssueResult, String> {
+    crate::devops::orchestration::assign_issue_to_agent(&app, &config)
+}
+
+/// Skip an issue and update its labels.
+#[tauri::command]
+#[specta::specta]
+pub fn skip_issue(
+    app: AppHandle,
+    config: crate::devops::orchestration::SkipIssueConfig,
+) -> Result<crate::devops::pipeline::PipelineItem, String> {
+    crate::devops::orchestration::skip_issue(&app, &config)
+}
+
+/// List all pipeline items, aggregating from multiple sources.
+#[tauri::command]
+#[specta::specta]
+pub fn list_pipeline_items(
+    app: AppHandle,
+    work_repo: Option<String>,
+) -> Result<Vec<crate::devops::pipeline::PipelineItem>, String> {
+    crate::devops::orchestration::list_pipeline_items(&app, work_repo.as_deref())
+}
+
+/// Get pipeline history (completed items).
+#[tauri::command]
+#[specta::specta]
+pub fn get_pipeline_history(
+    app: AppHandle,
+    limit: Option<usize>,
+) -> Vec<crate::devops::pipeline::PipelineItem> {
+    crate::devops::orchestration::get_pipeline_history(&app, limit)
+}
+
+/// Get pipeline summary statistics.
+#[tauri::command]
+#[specta::specta]
+pub fn get_pipeline_summary(app: AppHandle) -> crate::devops::orchestration::PipelineSummary {
+    crate::devops::orchestration::get_pipeline_summary(&app)
+}
+
+/// Detect and link PRs to pipeline items.
+#[tauri::command]
+#[specta::specta]
+pub fn detect_and_link_prs(
+    app: AppHandle,
+    work_repo: String,
+) -> Result<Vec<crate::devops::pipeline::PipelineItem>, String> {
+    crate::devops::orchestration::detect_and_link_prs(&app, &work_repo)
+}
+
+/// Sync PR status for all pipeline items with PRs.
+#[tauri::command]
+#[specta::specta]
+pub fn sync_all_pr_statuses(
+    app: AppHandle,
+) -> Result<Vec<crate::devops::pipeline::PipelineItem>, String> {
+    crate::devops::orchestration::sync_all_pr_statuses(&app)
+}
+
+/// Update a specific pipeline item's PR status.
+#[tauri::command]
+#[specta::specta]
+pub fn update_pipeline_item_pr_status(
+    app: AppHandle,
+    item_id: String,
+) -> Result<Option<crate::devops::pipeline::PipelineItem>, String> {
+    crate::devops::orchestration::update_pipeline_item_pr_status(&app, &item_id)
+}
+
+/// Get a pipeline item by ID.
+#[tauri::command]
+#[specta::specta]
+pub fn get_pipeline_item(
+    app: AppHandle,
+    item_id: String,
+) -> Option<crate::devops::pipeline::PipelineItem> {
+    crate::devops::orchestration::get_pipeline_item(&app, &item_id)
+}
+
+/// Find a pipeline item by issue.
+#[tauri::command]
+#[specta::specta]
+pub fn find_pipeline_item_by_issue(
+    app: AppHandle,
+    repo: String,
+    issue_number: u64,
+) -> Option<crate::devops::pipeline::PipelineItem> {
+    crate::devops::orchestration::find_pipeline_item_by_issue(&app, &repo, issue_number)
+}
+
+/// Find a pipeline item by session name.
+#[tauri::command]
+#[specta::specta]
+pub fn find_pipeline_item_by_session(
+    app: AppHandle,
+    session_name: String,
+) -> Option<crate::devops::pipeline::PipelineItem> {
+    crate::devops::orchestration::find_pipeline_item_by_session(&app, &session_name)
+}
+
+/// Link a PR to a pipeline item.
+#[tauri::command]
+#[specta::specta]
+pub fn link_pr_to_pipeline_item(
+    app: AppHandle,
+    item_id: String,
+    pr_number: u64,
+    work_repo: String,
+) -> Result<crate::devops::pipeline::PipelineItem, String> {
+    // Fetch the PR first
+    let pr = github::get_pr(&work_repo, pr_number)?;
+    crate::devops::orchestration::link_pr_to_pipeline_item(&app, &item_id, &pr)
+}
+
+/// Archive a completed pipeline item.
+#[tauri::command]
+#[specta::specta]
+pub fn archive_pipeline_item(
+    app: AppHandle,
+    item_id: String,
+) -> Result<Option<crate::devops::pipeline::PipelineItem>, String> {
+    crate::devops::orchestration::archive_pipeline_item(&app, &item_id)
+}
+
+/// Remove a pipeline item (for cleanup).
+#[tauri::command]
+#[specta::specta]
+pub fn remove_pipeline_item(
+    app: AppHandle,
+    item_id: String,
+) -> Result<Option<crate::devops::pipeline::PipelineItem>, String> {
+    crate::devops::orchestration::remove_pipeline_item(&app, &item_id)
 }

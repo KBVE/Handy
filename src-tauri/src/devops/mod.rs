@@ -6,11 +6,14 @@
 //! - Git worktree management
 //! - GitHub issue integration
 //! - Agent orchestration
+//! - Pipeline state tracking
 
 mod dependencies;
 pub mod github;
 pub mod operations;
+pub mod orchestration;
 pub mod orchestrator;
+pub mod pipeline;
 pub mod tmux;
 pub mod worktree;
 

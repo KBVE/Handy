@@ -62,8 +62,8 @@ pub fn list_plan_templates(repo_root: &Path) -> Result<Vec<PlanTemplate>, String
 
     let mut templates = Vec::new();
 
-    let entries = fs::read_dir(&plans_dir)
-        .map_err(|e| format!("Failed to read plans directory: {}", e))?;
+    let entries =
+        fs::read_dir(&plans_dir).map_err(|e| format!("Failed to read plans directory: {}", e))?;
 
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
@@ -96,8 +96,7 @@ pub fn list_plan_templates(repo_root: &Path) -> Result<Vec<PlanTemplate>, String
 
 /// Parse a single plan template markdown file
 fn parse_plan_template(path: &Path) -> Result<PlanTemplate, String> {
-    let content = fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let content = fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
 
     let matter = Matter::<YAML>::new();
     let result: ParsedEntity<PlanFrontmatter> = matter
@@ -306,14 +305,8 @@ pub fn template_to_config(
     default_work_repo: Option<String>,
 ) -> EpicConfig {
     // Use template repos if specified, otherwise use defaults
-    let repo = template
-        .tracking_repo
-        .clone()
-        .unwrap_or(default_repo);
-    let work_repo = template
-        .working_repo
-        .clone()
-        .or(default_work_repo);
+    let repo = template.tracking_repo.clone().unwrap_or(default_repo);
+    let work_repo = template.working_repo.clone().or(default_work_repo);
 
     EpicConfig {
         title: template.title.clone(),

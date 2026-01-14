@@ -205,9 +205,13 @@ export const DevOpsSettings: React.FC = () => {
               icon={<Container className="w-4 h-4" />}
               status={dependencies.docker}
             />
-            {dependencies.sandbox_available && (
+            {dependencies.sandbox_available ? (
               <div className="ml-8 text-xs text-green-400/70">
                 {t("devops.dependencies.sandboxAvailable")}
+              </div>
+            ) : dependencies.docker.installed && !dependencies.docker.authenticated && (
+              <div className="ml-8 text-xs text-yellow-400/70">
+                {t("devops.dependencies.daemonNotRunning")}
               </div>
             )}
 

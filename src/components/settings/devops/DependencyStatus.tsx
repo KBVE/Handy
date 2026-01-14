@@ -1,6 +1,7 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { DependencyStatus as DependencyStatusType } from "@/bindings";
+import { toast } from "@/stores/toastStore";
 import {
   CheckCircle2,
   XCircle,
@@ -8,6 +9,7 @@ import {
   AlertTriangle,
   ExternalLink,
   Terminal,
+  Check,
 } from "lucide-react";
 
 interface DependencyStatusProps {
@@ -36,9 +38,42 @@ export const DependencyStatus: React.FC<DependencyStatusProps> = ({
   launchAuthDisabled = false,
 }) => {
   const { t } = useTranslation();
+  const [copiedInstall, setCopiedInstall] = React.useState(false);
+  const [copiedPath, setCopiedPath] = React.useState(false);
 
-  const copyInstallCommand = () => {
-    navigator.clipboard.writeText(status.install_hint);
+  const copyInstallCommand = async () => {
+    try {
+      await navigator.clipboard.writeText(status.install_hint);
+      setCopiedInstall(true);
+      toast.success(
+        t("devops.dependencies.copied", "Copied!"),
+        t("devops.dependencies.copiedInstallHint", "Install command copied to clipboard")
+      );
+      setTimeout(() => setCopiedInstall(false), 2000);
+    } catch {
+      toast.error(
+        t("devops.dependencies.copyFailed", "Copy Failed"),
+        t("devops.dependencies.copyFailedMessage", "Could not copy to clipboard")
+      );
+    }
+  };
+
+  const copyPath = async () => {
+    if (!status.path) return;
+    try {
+      await navigator.clipboard.writeText(status.path);
+      setCopiedPath(true);
+      toast.success(
+        t("devops.dependencies.copied", "Copied!"),
+        t("devops.dependencies.copiedPath", "Path copied to clipboard")
+      );
+      setTimeout(() => setCopiedPath(false), 2000);
+    } catch {
+      toast.error(
+        t("devops.dependencies.copyFailed", "Copy Failed"),
+        t("devops.dependencies.copyFailedMessage", "Could not copy to clipboard")
+      );
+    }
   };
 
   // Determine if auth is required and missing
@@ -80,14 +115,26 @@ export const DependencyStatus: React.FC<DependencyStatusProps> = ({
               </code>
             </div>
             {status.path && (
-              <div className="flex items-center gap-2 mt-0.5">
+              <div className="flex items-center gap-2 mt-0.5 group">
                 <span>{t("devops.dependencies.path")}:</span>
                 <code
-                  className="text-xs truncate max-w-[200px]"
+                  className="text-xs truncate max-w-[200px] cursor-pointer hover:text-white transition-colors"
                   title={status.path}
+                  onClick={copyPath}
                 >
                   {status.path}
                 </code>
+                <button
+                  onClick={copyPath}
+                  className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-mid-gray/20 transition-all"
+                  title={t("devops.dependencies.copyPath", "Copy path")}
+                >
+                  {copiedPath ? (
+                    <Check className="w-3 h-3 text-green-400" />
+                  ) : (
+                    <Copy className="w-3 h-3" />
+                  )}
+                </button>
               </div>
             )}
             {/* Show authenticated user if available */}
@@ -138,7 +185,11 @@ export const DependencyStatus: React.FC<DependencyStatusProps> = ({
               {t("devops.dependencies.notInstalled")}
             </p>
             <div className="flex items-center gap-2">
-              <code className="flex-1 text-xs px-2 py-1.5 rounded bg-black/30 text-green-400 font-mono">
+              <code
+                className="flex-1 text-xs px-2 py-1.5 rounded bg-black/30 text-green-400 font-mono cursor-pointer hover:bg-black/40 transition-colors"
+                onClick={copyInstallCommand}
+                title={t("devops.dependencies.clickToCopy", "Click to copy")}
+              >
                 {status.install_hint}
               </code>
               <button
@@ -146,7 +197,11 @@ export const DependencyStatus: React.FC<DependencyStatusProps> = ({
                 className="p-1.5 rounded hover:bg-mid-gray/20 transition-colors"
                 title={t("devops.dependencies.copyCommand")}
               >
-                <Copy className="w-4 h-4" />
+                {copiedInstall ? (
+                  <Check className="w-4 h-4 text-green-400" />
+                ) : (
+                  <Copy className="w-4 h-4" />
+                )}
               </button>
             </div>
           </div>

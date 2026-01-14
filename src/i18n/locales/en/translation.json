@@ -857,7 +857,15 @@
       "launchAuth": "Launch Authentication",
       "followGuide": "Follow the authentication guide",
       "optional": "Optional (enables sandboxed agents)",
-      "sandboxAvailable": "✓ Docker daemon running - sandboxed agents available"
+      "sandboxAvailable": "✓ Docker daemon running - sandboxed agents available",
+      "copied": "Copied!",
+      "copiedInstallHint": "Install command copied to clipboard",
+      "copiedPath": "Path copied to clipboard",
+      "copyFailed": "Copy Failed",
+      "copyFailedMessage": "Could not copy to clipboard",
+      "clickToCopy": "Click to copy",
+      "daemonNotRunning": "Docker installed but daemon not running",
+      "daemonNotRunningHint": "Start Docker Desktop to enable sandboxed agents"
     },
     "supportWorker": {
       "sectionTitle": "Support Worker",

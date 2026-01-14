@@ -855,7 +855,9 @@
       "notAuthenticated": "Not authenticated",
       "verifyInstance": "You need to verify your instance before using this tool.",
       "launchAuth": "Launch Authentication",
-      "followGuide": "Follow the authentication guide"
+      "followGuide": "Follow the authentication guide",
+      "optional": "Optional (enables sandboxed agents)",
+      "sandboxAvailable": "✓ Docker daemon running - sandboxed agents available"
     },
     "supportWorker": {
       "sectionTitle": "Support Worker",

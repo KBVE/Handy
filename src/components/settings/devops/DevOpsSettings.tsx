@@ -26,6 +26,7 @@ import {
   Code2,
   Server,
   Cpu,
+  Container,
 } from "lucide-react";
 
 export const DevOpsSettings: React.FC = () => {
@@ -193,6 +194,22 @@ export const DevOpsSettings: React.FC = () => {
               icon={<Terminal className="w-4 h-4" />}
               status={dependencies.tmux}
             />
+
+            {/* Optional: Docker for sandboxed agents */}
+            <div className="text-xs text-mid-gray/70 mb-3 mt-5 px-1">
+              {t("devops.dependencies.optional")}
+            </div>
+            <DependencyStatus
+              name="docker"
+              displayName="Docker"
+              icon={<Container className="w-4 h-4" />}
+              status={dependencies.docker}
+            />
+            {dependencies.sandbox_available && (
+              <div className="ml-8 text-xs text-green-400/70">
+                {t("devops.dependencies.sandboxAvailable")}
+              </div>
+            )}
 
             {/* AI Agents (at least one required) */}
             <div className="text-xs text-mid-gray/70 mb-3 mt-5 px-1">

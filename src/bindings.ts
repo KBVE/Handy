@@ -1870,6 +1870,128 @@ async loadEpicForRecovery(repo: string, epicNumber: number) : Promise<Result<Epi
 }
 },
 /**
+ * Check if Docker is available and daemon is running
+ */
+async isDockerAvailable() : Promise<boolean> {
+    return await TAURI_INVOKE("is_docker_available");
+},
+/**
+ * Spawn a sandboxed agent in a Docker container
+ * 
+ * This creates an isolated container where the agent can run with
+ * auto-accept permissions safely. The container has:
+ * - The worktree mounted at /workspace
+ * - GitHub and Anthropic credentials passed as env vars
+ * - Resource limits applied
+ */
+async spawnSandbox(config: SandboxConfig) : Promise<Result<SandboxResult, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("spawn_sandbox", { config }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Get status of a sandbox container
+ */
+async getSandboxStatus(containerName: string) : Promise<Result<SandboxStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_sandbox_status", { containerName }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Get logs from a sandbox container
+ */
+async getSandboxLogs(containerName: string, tail: number | null) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_sandbox_logs", { containerName, tail }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Stop a sandbox container
+ */
+async stopSandbox(containerName: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("stop_sandbox", { containerName }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Remove a sandbox container
+ */
+async removeSandbox(containerName: string, force: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("remove_sandbox", { containerName, force }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * List all Handy sandbox containers
+ */
+async listSandboxes() : Promise<Result<SandboxStatus[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_sandboxes") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Check if devcontainer CLI is available
+ */
+async isDevcontainerCliAvailable() : Promise<boolean> {
+    return await TAURI_INVOKE("is_devcontainer_cli_available");
+},
+/**
+ * Setup a devcontainer configuration for a worktree
+ * 
+ * Creates a .devcontainer/devcontainer.json file with the official
+ * Anthropic Claude Code feature configured.
+ */
+async setupDevcontainer(worktreePath: string, issueRef: string, ghToken: string | null, anthropicKey: string | null) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("setup_devcontainer", { worktreePath, issueRef, ghToken, anthropicKey }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Start a devcontainer for a workspace
+ * 
+ * Uses the devcontainer CLI to build and start the container.
+ */
+async startDevcontainer(worktreePath: string) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("start_devcontainer", { worktreePath }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Execute a command inside a running devcontainer
+ */
+async execInDevcontainer(worktreePath: string, command: string) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("exec_in_devcontainer", { worktreePath, command }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Checks if the Mac is a laptop by detecting battery presence
  * 
  * This uses pmset to check for battery information.
@@ -2132,6 +2254,10 @@ gh: DependencyStatus;
  */
 tmux: DependencyStatus; 
 /**
+ * Docker status (optional, enables sandboxed agents)
+ */
+docker: DependencyStatus; 
+/**
  * Claude Code CLI status
  */
 claude: DependencyStatus; 
@@ -2158,7 +2284,11 @@ all_satisfied: boolean;
 /**
  * List of available agent types that are installed
  */
-available_agents: string[] }
+available_agents: string[]; 
+/**
+ * Whether sandboxed (Docker) agents are available
+ */
+sandbox_available: boolean }
 /**
  * Discord state for frontend
  */
@@ -2821,6 +2951,107 @@ export type RecoverySource =
  * Confirmed by both sources
  */
 "Both"
+/**
+ * Configuration for spawning a sandboxed agent container
+ */
+export type SandboxConfig = { 
+/**
+ * Sandbox mode - DevContainer (recommended) or DirectDocker
+ */
+mode: SandboxMode; 
+/**
+ * Docker image to use (for DirectDocker mode)
+ */
+image: string | null; 
+/**
+ * Working directory to mount (the worktree path)
+ */
+workdir: string; 
+/**
+ * GitHub token for API access (passed as env var)
+ */
+gh_token: string | null; 
+/**
+ * Anthropic API key for Claude (passed as env var)
+ */
+anthropic_api_key: string | null; 
+/**
+ * Issue reference (org/repo#number)
+ */
+issue_ref: string; 
+/**
+ * Agent type (claude, aider, etc.)
+ */
+agent_type: string; 
+/**
+ * Whether to auto-accept all operations (safe in sandbox)
+ */
+auto_accept: boolean; 
+/**
+ * Memory limit (e.g., "4g")
+ */
+memory_limit: string | null; 
+/**
+ * CPU limit (e.g., "2")
+ */
+cpu_limit: string | null; 
+/**
+ * Network mode: "bridge" (default), "none" (air-gapped), or "host"
+ */
+network_mode: string | null }
+/**
+ * Sandbox mode - how to run the isolated agent
+ */
+export type SandboxMode = 
+/**
+ * Use Dev Container (recommended) - creates .devcontainer/devcontainer.json
+ * and uses the official Anthropic devcontainer feature
+ */
+"DevContainer" | 
+/**
+ * Use direct Docker container (simpler but less integrated)
+ */
+"DirectDocker"
+/**
+ * Result of spawning a sandboxed container
+ */
+export type SandboxResult = { 
+/**
+ * Container ID
+ */
+container_id: string; 
+/**
+ * Container name
+ */
+container_name: string; 
+/**
+ * Whether the container started successfully
+ */
+started: boolean }
+/**
+ * Status of a running sandbox container
+ */
+export type SandboxStatus = { 
+/**
+ * Container ID
+ */
+container_id: string; 
+/**
+ * Container name
+ */
+container_name: string; 
+/**
+ * Whether container is running
+ */
+running: boolean; 
+/**
+ * Exit code if stopped
+ */
+exit_code: number | null; 
+/**
+ * Container status string
+ */
+status: string }
 /**
  * Status of an agent session
  */

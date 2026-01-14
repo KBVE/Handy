@@ -8,6 +8,8 @@ interface PlanTemplate {
   title: string;
   description: string;
   labels: string[];
+  tracking_repo: string | null;
+  working_repo: string | null;
   goal: string;
   success_metrics: string[];
   phases: PhaseConfig[];
@@ -85,6 +87,8 @@ export function GenericEpicCreator() {
       title: "Blank",
       description: "Start from scratch",
       labels: [],
+      tracking_repo: null,
+      working_repo: null,
       goal: "",
       success_metrics: [],
       phases: [],
@@ -133,6 +137,8 @@ export function GenericEpicCreator() {
             title: "Blank",
             description: "Start from scratch",
             labels: [],
+            tracking_repo: null,
+            working_repo: null,
             goal: "",
             success_metrics: [],
             phases: [],
@@ -142,6 +148,8 @@ export function GenericEpicCreator() {
             title: EPIC_TEMPLATES["cicd-testing"].title,
             description: "Comprehensive testing infrastructure",
             labels: EPIC_TEMPLATES["cicd-testing"].labels,
+            tracking_repo: null,
+            working_repo: null,
             goal: EPIC_TEMPLATES["cicd-testing"].goal,
             success_metrics: EPIC_TEMPLATES["cicd-testing"].successMetrics,
             phases: EPIC_TEMPLATES["cicd-testing"].phases,
@@ -165,6 +173,14 @@ export function GenericEpicCreator() {
     setPhases([...template.phases]);
     setLabels([...template.labels]);
     setSelectedTemplate(templateId);
+
+    // Set repos from template if specified
+    if (template.tracking_repo) {
+      setRepo(template.tracking_repo);
+    }
+    if (template.working_repo) {
+      setWorkRepo(template.working_repo);
+    }
   };
 
   const handleTemplateSelect = () => {

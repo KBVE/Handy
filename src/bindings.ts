@@ -1992,6 +1992,135 @@ async execInDevcontainer(worktreePath: string, command: string) : Promise<Result
 }
 },
 /**
+ * Assign an issue to an agent, creating worktree and tmux session.
+ */
+async assignIssueToAgentPipeline(config: AssignIssueConfig) : Promise<Result<AssignIssueResult, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("assign_issue_to_agent_pipeline", { config }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Skip an issue and update its labels.
+ */
+async skipIssue(config: SkipIssueConfig) : Promise<Result<PipelineItem, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("skip_issue", { config }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * List all pipeline items, aggregating from multiple sources.
+ */
+async listPipelineItems(workRepo: string | null) : Promise<Result<PipelineItem[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_pipeline_items", { workRepo }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Get pipeline history (completed items).
+ */
+async getPipelineHistory(limit: number | null) : Promise<PipelineItem[]> {
+    return await TAURI_INVOKE("get_pipeline_history", { limit });
+},
+/**
+ * Get pipeline summary statistics.
+ */
+async getPipelineSummary() : Promise<PipelineSummary> {
+    return await TAURI_INVOKE("get_pipeline_summary");
+},
+/**
+ * Detect and link PRs to pipeline items.
+ */
+async detectAndLinkPrs(workRepo: string) : Promise<Result<PipelineItem[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("detect_and_link_prs", { workRepo }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Sync PR status for all pipeline items with PRs.
+ */
+async syncAllPrStatuses() : Promise<Result<PipelineItem[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("sync_all_pr_statuses") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Update a specific pipeline item's PR status.
+ */
+async updatePipelineItemPrStatus(itemId: string) : Promise<Result<PipelineItem | null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_pipeline_item_pr_status", { itemId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Get a pipeline item by ID.
+ */
+async getPipelineItem(itemId: string) : Promise<PipelineItem | null> {
+    return await TAURI_INVOKE("get_pipeline_item", { itemId });
+},
+/**
+ * Find a pipeline item by issue.
+ */
+async findPipelineItemByIssue(repo: string, issueNumber: number) : Promise<PipelineItem | null> {
+    return await TAURI_INVOKE("find_pipeline_item_by_issue", { repo, issueNumber });
+},
+/**
+ * Find a pipeline item by session name.
+ */
+async findPipelineItemBySession(sessionName: string) : Promise<PipelineItem | null> {
+    return await TAURI_INVOKE("find_pipeline_item_by_session", { sessionName });
+},
+/**
+ * Link a PR to a pipeline item.
+ */
+async linkPrToPipelineItem(itemId: string, prNumber: number, workRepo: string) : Promise<Result<PipelineItem, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("link_pr_to_pipeline_item", { itemId, prNumber, workRepo }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Archive a completed pipeline item.
+ */
+async archivePipelineItem(itemId: string) : Promise<Result<PipelineItem | null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("archive_pipeline_item", { itemId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Remove a pipeline item (for cleanup).
+ */
+async removePipelineItem(itemId: string) : Promise<Result<PipelineItem | null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("remove_pipeline_item", { itemId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Checks if the Mac is a laptop by detecting battery presence
  * 
  * This uses pmset to check for battery information.
@@ -2155,6 +2284,50 @@ is_attached: boolean;
  */
 is_local: boolean }
 export type AppSettings = { bindings: Partial<{ [key in string]: ShortcutBinding }>; push_to_talk: boolean; audio_feedback: boolean; audio_feedback_volume?: number; sound_theme?: SoundTheme; start_hidden?: boolean; autostart_enabled?: boolean; update_checks_enabled?: boolean; selected_model?: string; always_on_microphone?: boolean; selected_microphone?: string | null; clamshell_microphone?: string | null; selected_output_device?: string | null; translate_to_english?: boolean; selected_language?: string; overlay_position?: OverlayPosition; debug_mode?: boolean; log_level?: LogLevel; custom_words?: string[]; model_unload_timeout?: ModelUnloadTimeout; word_correction_threshold?: number; history_limit?: number; recording_retention_period?: RecordingRetentionPeriod; paste_method?: PasteMethod; clipboard_handling?: ClipboardHandling; post_process_enabled?: boolean; post_process_provider_id?: string; post_process_providers?: PostProcessProvider[]; post_process_api_keys?: Partial<{ [key in string]: string }>; post_process_models?: Partial<{ [key in string]: string }>; post_process_prompts?: LLMPrompt[]; post_process_selected_prompt_id?: string | null; mute_while_recording?: boolean; append_trailing_space?: boolean; app_language?: string; filler_detection_enabled?: boolean; filler_output_mode?: FillerOutputMode; custom_filler_words?: string[]; show_filler_overlay?: boolean; active_ui_section?: string; onichan_silence_threshold?: number; enabled_agents?: string[] }
+/**
+ * Configuration for assigning an issue to an agent.
+ */
+export type AssignIssueConfig = { 
+/**
+ * Repository where the issue exists (tracking repo)
+ */
+tracking_repo: string; 
+/**
+ * Repository where work will be done
+ */
+work_repo: string; 
+/**
+ * Issue number to assign
+ */
+issue_number: number; 
+/**
+ * Agent type to use
+ */
+agent_type: string; 
+/**
+ * Local path to the work repository
+ */
+repo_path: string; 
+/**
+ * Labels to add when work starts
+ */
+start_labels?: string[]; 
+/**
+ * Labels to remove when work starts
+ */
+remove_labels?: string[] }
+/**
+ * Result of assigning an issue to an agent.
+ */
+export type AssignIssueResult = { 
+/**
+ * The pipeline item created
+ */
+pipeline_item: PipelineItem; 
+/**
+ * The spawn result from orchestrator
+ */
+spawn_result: SpawnResult }
 export type AudioDevice = { index: string; name: string; is_default: boolean }
 export type AuthUser = { id: string; email: string | null; name: string | null; avatar_url: string | null; provider: string | null; is_authenticated: boolean }
 export type BindingResponse = { success: boolean; binding: ShortcutBinding | null; error: string | null }
@@ -2749,6 +2922,152 @@ dependencies?: string[] }
  */
 export type PhaseStatus = { phase_number: number; phase_name: string; approach: string; total_issues: number; completed_issues: number; in_progress_issues: number; status: string }
 /**
+ * A pipeline item linking issue -> session -> worktree -> PR.
+ * 
+ * This struct tracks the full lifecycle of an agent's work on an issue.
+ */
+export type PipelineItem = { 
+/**
+ * Unique identifier for this pipeline item
+ */
+id: string; 
+/**
+ * Repository in owner/repo format (tracking repo where issue exists)
+ */
+tracking_repo: string; 
+/**
+ * Repository where work is done (may be different from tracking_repo)
+ */
+work_repo: string; 
+/**
+ * Issue number being worked on
+ */
+issue_number: number; 
+/**
+ * Issue title
+ */
+issue_title: string; 
+/**
+ * Issue URL
+ */
+issue_url: string; 
+/**
+ * Agent type (e.g., "claude", "aider")
+ */
+agent_type: string; 
+/**
+ * tmux session name (if active)
+ */
+session_name: string | null; 
+/**
+ * Worktree path (if created)
+ */
+worktree_path: string | null; 
+/**
+ * Branch name for the work
+ */
+branch_name: string | null; 
+/**
+ * Machine ID where agent is running
+ */
+machine_id: string | null; 
+/**
+ * PR number (if created)
+ */
+pr_number: number | null; 
+/**
+ * PR URL (if created)
+ */
+pr_url: string | null; 
+/**
+ * Current PR status
+ */
+pr_status: PrPipelineStatus; 
+/**
+ * Overall pipeline status
+ */
+status: PipelineStatus; 
+/**
+ * When the item was created/queued
+ */
+created_at: string; 
+/**
+ * When work started (agent assigned)
+ */
+started_at: string | null; 
+/**
+ * When work completed (PR merged or skipped)
+ */
+completed_at: string | null; 
+/**
+ * Any error message if failed
+ */
+error: string | null }
+/**
+ * Status of a pipeline item.
+ */
+export type PipelineStatus = 
+/**
+ * Issue is queued but not assigned
+ */
+"queued" | 
+/**
+ * Issue is assigned to an agent and work is in progress
+ */
+"in_progress" | 
+/**
+ * Agent has completed work and PR is pending
+ */
+"pr_pending" | 
+/**
+ * PR has been created and is being reviewed
+ */
+"pr_review" | 
+/**
+ * PR has been merged, work is complete
+ */
+"completed" | 
+/**
+ * Issue was skipped
+ */
+"skipped" | 
+/**
+ * Work failed or was abandoned
+ */
+"failed"
+/**
+ * Summary of pipeline items for display.
+ */
+export type PipelineSummary = { 
+/**
+ * Total items in pipeline
+ */
+total: number; 
+/**
+ * Items queued (not started)
+ */
+queued: number; 
+/**
+ * Items in progress
+ */
+in_progress: number; 
+/**
+ * Items with PRs pending review
+ */
+pr_pending: number; 
+/**
+ * Completed items
+ */
+completed: number; 
+/**
+ * Skipped items
+ */
+skipped: number; 
+/**
+ * Failed items
+ */
+failed: number }
+/**
  * Configuration for planning an Epic from a markdown file
  */
 export type PlanFromMarkdownConfig = { 
@@ -2858,6 +3177,38 @@ pending: number;
  * Total number of checks
  */
 total: number }
+/**
+ * Status of a PR in the pipeline.
+ */
+export type PrPipelineStatus = 
+/**
+ * No PR has been created yet
+ */
+"none" | 
+/**
+ * PR is in draft state
+ */
+"draft" | 
+/**
+ * PR is ready for review
+ */
+"ready" | 
+/**
+ * PR needs review (has reviewers assigned)
+ */
+"needs_review" | 
+/**
+ * PR has been approved
+ */
+"approved" | 
+/**
+ * PR has been merged
+ */
+"merged" | 
+/**
+ * PR was closed without merging
+ */
+"closed"
 /**
  * PR review status.
  */
@@ -3069,6 +3420,30 @@ export type SessionStatus =
  */
 "Recovered"
 export type ShortcutBinding = { id: string; name: string; description: string; default_binding: string; current_binding: string }
+/**
+ * Configuration for skipping an issue.
+ */
+export type SkipIssueConfig = { 
+/**
+ * Repository where the issue exists
+ */
+repo: string; 
+/**
+ * Issue number to skip
+ */
+issue_number: number; 
+/**
+ * Optional reason for skipping
+ */
+reason: string | null; 
+/**
+ * Labels to add (defaults to "agent-skipped")
+ */
+add_labels?: string[]; 
+/**
+ * Labels to remove (defaults to "agent-todo")
+ */
+remove_labels?: string[] }
 export type SoundTheme = "marimba" | "pop" | "custom"
 /**
  * Configuration for spawning an agent from a GitHub issue

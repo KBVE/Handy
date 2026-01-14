@@ -887,6 +887,11 @@
       "send": "Send message",
       "sendPlaceholder": "Type a message to send to the agent...",
       "quickKeys": "Quick keys:",
+      "startedAt": "Started at",
+      "updating": "updating...",
+      "justNow": "just now",
+      "secondsAgo": "{{count}}s ago",
+      "minutesAgo": "{{count}}m ago",
       "recoveryTitle": "Recovery Suggestions",
       "action": {
         "resume": "Session can be resumed",

@@ -235,6 +235,7 @@ const ExpandedSessionView: React.FC<ExpandedSessionViewProps> = ({
   const [loadingOutput, setLoadingOutput] = useState(true);
   const [inputMessage, setInputMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   // Get the current session data from the store to keep it fresh
   const sessions = useDevOpsStore((state) => state.sessions);
@@ -279,6 +280,7 @@ const ExpandedSessionView: React.FC<ExpandedSessionViewProps> = ({
         const result = await commands.getTmuxSessionOutput(sessionName, 100);
         if (result.status === "ok" && isMounted) {
           setOutput(result.data);
+          setLastUpdated(new Date());
         }
       } catch {
         // Silently fail
@@ -325,6 +327,14 @@ const ExpandedSessionView: React.FC<ExpandedSessionViewProps> = ({
     } catch {
       return timestamp;
     }
+  };
+
+  const formatRelativeTime = (date: Date) => {
+    const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
+    if (seconds < 5) return t("devops.sessions.justNow", "just now");
+    if (seconds < 60) return t("devops.sessions.secondsAgo", "{{count}}s ago", { count: seconds });
+    const minutes = Math.floor(seconds / 60);
+    return t("devops.sessions.minutesAgo", "{{count}}m ago", { count: minutes });
   };
 
   const handleOpenInTerminal = async () => {
@@ -402,28 +412,37 @@ const ExpandedSessionView: React.FC<ExpandedSessionViewProps> = ({
         </div>
 
         {/* Metadata bar */}
-        {session.metadata && (
-          <div className="flex items-center gap-6 px-4 py-3 bg-mid-gray/5 border-b border-mid-gray/10 text-sm text-mid-gray">
-            {session.metadata.issue_ref && (
-              <div className="flex items-center gap-2">
-                <GitBranch className="w-4 h-4" />
-                <span>{session.metadata.issue_ref}</span>
-              </div>
-            )}
-            {session.metadata.started_at && (
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4" />
-                <span>{formatTimestamp(session.metadata.started_at)}</span>
-              </div>
-            )}
-            {session.metadata.worktree && (
-              <div className="flex items-center gap-2 truncate">
-                <Terminal className="w-4 h-4 shrink-0" />
-                <span className="truncate">{session.metadata.worktree}</span>
-              </div>
-            )}
+        <div className="flex items-center gap-6 px-4 py-3 bg-mid-gray/5 border-b border-mid-gray/10 text-sm text-mid-gray">
+          {session.metadata?.issue_ref && (
+            <div className="flex items-center gap-2">
+              <GitBranch className="w-4 h-4" />
+              <span>{session.metadata.issue_ref}</span>
+            </div>
+          )}
+          {session.metadata?.started_at && (
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4" />
+              <span title={t("devops.sessions.startedAt", "Started at")}>
+                {formatTimestamp(session.metadata.started_at)}
+              </span>
+            </div>
+          )}
+          {session.metadata?.worktree && (
+            <div className="flex items-center gap-2 truncate">
+              <Terminal className="w-4 h-4 shrink-0" />
+              <span className="truncate">{session.metadata.worktree}</span>
+            </div>
+          )}
+          {/* Last updated indicator */}
+          <div className="flex items-center gap-2 ml-auto">
+            <RefreshCcw className={`w-3 h-3 ${loadingOutput ? "animate-spin" : ""}`} />
+            <span className="text-xs">
+              {lastUpdated
+                ? formatRelativeTime(lastUpdated)
+                : t("devops.sessions.updating", "updating...")}
+            </span>
           </div>
-        )}
+        </div>
 
         {/* Output area - scrollable */}
         <div className="flex-1 overflow-auto bg-black/40 p-4 min-h-[200px] max-h-[50vh]">

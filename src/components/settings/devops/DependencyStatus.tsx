@@ -1,7 +1,14 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { DependencyStatus as DependencyStatusType } from "@/bindings";
-import { CheckCircle2, XCircle, Copy } from "lucide-react";
+import {
+  CheckCircle2,
+  XCircle,
+  Copy,
+  AlertTriangle,
+  ExternalLink,
+  Terminal,
+} from "lucide-react";
 
 interface DependencyStatusProps {
   name: string;
@@ -12,6 +19,8 @@ interface DependencyStatusProps {
   isEnabled?: boolean;
   onToggle?: (enabled: boolean) => void;
   toggleDisabled?: boolean;
+  onLaunchAuth?: () => void;
+  launchAuthDisabled?: boolean;
 }
 
 export const DependencyStatus: React.FC<DependencyStatusProps> = ({
@@ -23,6 +32,8 @@ export const DependencyStatus: React.FC<DependencyStatusProps> = ({
   isEnabled = false,
   onToggle,
   toggleDisabled = false,
+  onLaunchAuth,
+  launchAuthDisabled = false,
 }) => {
   const { t } = useTranslation();
 
@@ -30,12 +41,21 @@ export const DependencyStatus: React.FC<DependencyStatusProps> = ({
     navigator.clipboard.writeText(status.install_hint);
   };
 
+  // Determine if auth is required and missing
+  const needsAuth = status.authenticated !== null;
+  const isAuthenticated = status.authenticated === true;
+  const installedButNotAuth = status.installed && needsAuth && !isAuthenticated;
+
   return (
     <div className="flex items-start gap-3 p-4 rounded-lg bg-mid-gray/10">
       {/* Status icon */}
       <div className="mt-0.5">
         {status.installed ? (
-          <CheckCircle2 className="w-5 h-5 text-green-400" />
+          installedButNotAuth ? (
+            <AlertTriangle className="w-5 h-5 text-yellow-400" />
+          ) : (
+            <CheckCircle2 className="w-5 h-5 text-green-400" />
+          )
         ) : (
           <XCircle className="w-5 h-5 text-red-400" />
         )}
@@ -68,6 +88,47 @@ export const DependencyStatus: React.FC<DependencyStatusProps> = ({
                 >
                   {status.path}
                 </code>
+              </div>
+            )}
+            {/* Show authenticated user if available */}
+            {isAuthenticated && status.auth_user && (
+              <div className="flex items-center gap-2 mt-0.5">
+                <span>{t("devops.dependencies.authenticatedAs")}:</span>
+                <code className="text-green-400">{status.auth_user}</code>
+              </div>
+            )}
+            {/* Authentication status warning */}
+            {installedButNotAuth && (
+              <div className="mt-3 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                <p className="text-yellow-400 text-sm font-medium mb-2">
+                  {t("devops.dependencies.notAuthenticated")}
+                </p>
+                <p className="text-yellow-400/80 text-xs mb-2">
+                  {t("devops.dependencies.verifyInstance")}
+                </p>
+                <div className="flex items-center gap-3 mt-3">
+                  {onLaunchAuth && (
+                    <button
+                      onClick={onLaunchAuth}
+                      disabled={launchAuthDisabled}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded bg-logo-primary hover:bg-logo-primary/80 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Terminal className="w-3 h-3" />
+                      {t("devops.dependencies.launchAuth")}
+                    </button>
+                  )}
+                  {status.auth_hint_url && (
+                    <a
+                      href={status.auth_hint_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-logo-primary hover:underline"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      {t("devops.dependencies.followGuide")}
+                    </a>
+                  )}
+                </div>
               </div>
             )}
           </div>

@@ -13,6 +13,12 @@ pub struct DependencyStatus {
     pub name: String,
     /// Whether the dependency is installed
     pub installed: bool,
+    /// Whether the dependency is authenticated (for tools that require auth)
+    pub authenticated: Option<bool>,
+    /// Username/account if authenticated
+    pub auth_user: Option<String>,
+    /// Authentication hint URL if not authenticated
+    pub auth_hint_url: Option<String>,
     /// Version string if installed
     pub version: Option<String>,
     /// Path to the executable if installed
@@ -78,6 +84,58 @@ fn check_command(name: &str, version_args: &[&str]) -> (bool, Option<String>, Op
     (true, version, Some(path))
 }
 
+/// Run a command with a timeout, returning stdout if successful
+fn run_command_with_timeout(
+    name: &str,
+    args: &[&str],
+    timeout_secs: u64,
+) -> Option<(bool, String)> {
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    let name = name.to_string();
+    let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+
+    let (tx, rx) = mpsc::channel();
+
+    std::thread::spawn(move || {
+        let result = Command::new(&name).args(&args).output();
+        let _ = tx.send(result);
+    });
+
+    match rx.recv_timeout(Duration::from_secs(timeout_secs)) {
+        Ok(Ok(output)) => {
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            Some((output.status.success(), stdout))
+        }
+        _ => None,
+    }
+}
+
+/// Check if GitHub CLI is authenticated and get the username
+fn check_gh_auth() -> (bool, Option<String>) {
+    // Use a 5 second timeout to prevent hanging
+    match run_command_with_timeout("gh", &["auth", "status"], 5) {
+        Some((success, _)) => {
+            if success {
+                // Get the authenticated username
+                if let Some((_, stdout)) =
+                    run_command_with_timeout("gh", &["api", "user", "-q", ".login"], 3)
+                {
+                    let username = stdout.trim().to_string();
+                    if !username.is_empty() {
+                        return (true, Some(username));
+                    }
+                }
+                (true, None)
+            } else {
+                (false, None)
+            }
+        }
+        None => (false, None),
+    }
+}
+
 /// Check GitHub CLI (gh) status
 fn check_gh() -> DependencyStatus {
     let (installed, version, path) = check_command("gh", &["--version"]);
@@ -89,9 +147,20 @@ fn check_gh() -> DependencyStatus {
             .map(|s| s.trim_end_matches(',').to_string())
     });
 
+    // Check authentication status if installed
+    let (authenticated, auth_user) = if installed {
+        let (is_auth, user) = check_gh_auth();
+        (Some(is_auth), user)
+    } else {
+        (None, None)
+    };
+
     DependencyStatus {
         name: "gh".to_string(),
         installed,
+        authenticated,
+        auth_user,
+        auth_hint_url: Some("https://kbve.com/application/git#gh".to_string()),
         version,
         path,
         install_hint: "brew install gh".to_string(),
@@ -108,10 +177,46 @@ fn check_tmux() -> DependencyStatus {
     DependencyStatus {
         name: "tmux".to_string(),
         installed,
+        authenticated: None,
+        auth_user: None,
+        auth_hint_url: None,
         version,
         path,
         install_hint: "brew install tmux".to_string(),
     }
+}
+
+/// Check if Claude Code CLI is authenticated and get the email
+fn check_claude_auth() -> (bool, Option<String>) {
+    // Method 1: Check for ANTHROPIC_API_KEY environment variable (highest priority auth method)
+    if let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") {
+        if !api_key.is_empty() {
+            return (true, Some("API Key".to_string()));
+        }
+    }
+
+    // Method 2: Read ~/.claude.json and check for oauthAccount
+    if let Ok(home) = std::env::var("HOME") {
+        let claude_config = std::path::PathBuf::from(&home).join(".claude.json");
+        if claude_config.exists() {
+            if let Ok(contents) = std::fs::read_to_string(&claude_config) {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&contents) {
+                    // Check for oauthAccount which contains email and other auth info
+                    if let Some(oauth) = json.get("oauthAccount") {
+                        if let Some(email) = oauth.get("emailAddress").and_then(|e| e.as_str()) {
+                            if !email.is_empty() {
+                                return (true, Some(email.to_string()));
+                            }
+                        }
+                        // Has oauth account but no email - still authenticated
+                        return (true, None);
+                    }
+                }
+            }
+        }
+    }
+
+    (false, None)
 }
 
 /// Check Claude Code CLI status
@@ -121,9 +226,20 @@ fn check_claude() -> DependencyStatus {
     // Version output format may vary, just use the first line
     let version = version.map(|v| v.trim().to_string());
 
+    // Check authentication status if installed
+    let (authenticated, auth_user) = if installed {
+        let (is_auth, user) = check_claude_auth();
+        (Some(is_auth), user)
+    } else {
+        (None, None)
+    };
+
     DependencyStatus {
         name: "claude".to_string(),
         installed,
+        authenticated,
+        auth_user,
+        auth_hint_url: Some("https://kbve.com/application/ml/#claude".to_string()),
         version,
         path,
         install_hint: "npm install -g @anthropic-ai/claude-code".to_string(),
@@ -140,6 +256,9 @@ fn check_aider() -> DependencyStatus {
     DependencyStatus {
         name: "aider".to_string(),
         installed,
+        authenticated: None,
+        auth_user: None,
+        auth_hint_url: None,
         version,
         path,
         install_hint: "pip install aider-chat".to_string(),
@@ -155,6 +274,9 @@ fn check_gemini() -> DependencyStatus {
     DependencyStatus {
         name: "gemini".to_string(),
         installed,
+        authenticated: None,
+        auth_user: None,
+        auth_hint_url: None,
         version,
         path,
         install_hint: "pip install google-generativeai".to_string(),
@@ -180,6 +302,9 @@ fn check_ollama() -> DependencyStatus {
     DependencyStatus {
         name: "ollama".to_string(),
         installed,
+        authenticated: None,
+        auth_user: None,
+        auth_hint_url: None,
         version,
         path,
         install_hint: "brew install ollama".to_string(),
@@ -196,6 +321,9 @@ fn check_vllm() -> DependencyStatus {
     DependencyStatus {
         name: "vllm".to_string(),
         installed,
+        authenticated: None,
+        auth_user: None,
+        auth_hint_url: None,
         version,
         path,
         install_hint: "pip install vllm".to_string(),

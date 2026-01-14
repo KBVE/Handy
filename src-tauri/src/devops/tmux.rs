@@ -473,6 +473,124 @@ pub fn recover_sessions() -> Result<Vec<RecoveredSession>, String> {
     Ok(recovered)
 }
 
+/// Build the command to start an agent based on type and context
+///
+/// Returns the shell command that should be sent to the tmux session
+/// to start the appropriate agent with the issue context.
+pub fn build_agent_command(
+    agent_type: &str,
+    repo: &str,
+    issue_number: u64,
+    issue_title: Option<&str>,
+) -> Result<String, String> {
+    // Escape the issue title for shell if provided
+    let title_arg = issue_title
+        .map(|t| {
+            // Escape single quotes in the title
+            let escaped = t.replace('\'', "'\\''");
+            format!(" --title '{}'", escaped)
+        })
+        .unwrap_or_default();
+
+    let command = match agent_type.to_lowercase().as_str() {
+        "claude" => {
+            // Claude Code CLI with GitHub issue context
+            // Uses --issue flag if available, otherwise passes as prompt
+            format!(
+                "claude --dangerously-skip-permissions 'Work on GitHub issue {}#{}: Implement the requirements described in the issue. When done, commit your changes and create a PR.'",
+                repo, issue_number
+            )
+        }
+        "aider" => {
+            // Aider with issue context in the prompt
+            format!(
+                "aider --yes-always --message 'Work on GitHub issue {}#{}{}. Implement the requirements and commit when done.'",
+                repo, issue_number, title_arg
+            )
+        }
+        "codex" | "openai" => {
+            // OpenAI Codex CLI
+            format!(
+                "codex 'Implement GitHub issue {}#{}{}'",
+                repo, issue_number, title_arg
+            )
+        }
+        "gemini" => {
+            // Google Gemini CLI (assuming similar interface)
+            format!(
+                "gemini-cli 'Work on GitHub issue {}#{}{}'",
+                repo, issue_number, title_arg
+            )
+        }
+        "ollama" | "local" => {
+            // Local model via ollama
+            format!(
+                "ollama run codellama 'Implement GitHub issue {}#{}{}'",
+                repo, issue_number, title_arg
+            )
+        }
+        "manual" => {
+            // For manual work, just echo instructions - human will take over
+            format!(
+                "echo '🔧 Manual work session for issue {}#{}. The worktree is ready for you to work in.'",
+                repo, issue_number
+            )
+        }
+        _ => {
+            return Err(format!(
+                "Unknown agent type '{}'. Supported types: claude, aider, codex, gemini, ollama, manual",
+                agent_type
+            ));
+        }
+    };
+
+    Ok(command)
+}
+
+/// Start an agent in an existing tmux session
+///
+/// This sends the appropriate command to the session to start the agent.
+/// Call this after create_session() to actually begin agent work.
+pub fn start_agent_in_session(
+    session_name: &str,
+    agent_type: &str,
+    repo: &str,
+    issue_number: u64,
+    issue_title: Option<&str>,
+) -> Result<(), String> {
+    let command = build_agent_command(agent_type, repo, issue_number, issue_title)?;
+    send_command(session_name, &command)
+}
+
+/// Restart an agent in an existing session
+///
+/// Use this for recovery when a session exists but the agent process has stopped.
+/// This will attempt to restart the agent with the same context.
+pub fn restart_agent(session_name: &str) -> Result<(), String> {
+    // Get metadata to rebuild the agent command
+    let metadata = get_session_metadata(session_name)?;
+
+    let repo = metadata
+        .repo
+        .ok_or("Session has no repository metadata - cannot restart")?;
+
+    let issue_number = metadata
+        .issue_ref
+        .as_ref()
+        .and_then(|r| r.split('#').last())
+        .and_then(|n| n.parse::<u64>().ok())
+        .ok_or("Session has no valid issue reference - cannot restart")?;
+
+    // Start the agent with the stored metadata
+    start_agent_in_session(
+        session_name,
+        &metadata.agent_type,
+        &repo,
+        issue_number,
+        None, // We don't store the title in metadata, agent will fetch from GitHub
+    )
+}
+
 /// Generate a session name for an issue
 pub fn session_name_for_issue(issue_number: u32) -> String {
     format!("{}{}", SESSION_PREFIX, issue_number)

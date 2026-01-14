@@ -323,6 +323,70 @@ pub fn get_git_default_branch(repo_path: String) -> Result<String, String> {
     worktree::get_default_branch(&repo_path)
 }
 
+/// Suggest local paths for a GitHub repository.
+/// Searches common locations for cloned repos matching the given owner/repo format.
+#[tauri::command]
+#[specta::specta]
+pub fn suggest_local_repo_path(github_repo: String) -> Vec<String> {
+    let mut suggestions = Vec::new();
+
+    // Extract repo name from "owner/repo" format
+    let repo_name = github_repo.split('/').last().unwrap_or(&github_repo);
+
+    // Get home directory using std::env
+    let home = match std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map(std::path::PathBuf::from)
+    {
+        Ok(h) => h,
+        Err(_) => return suggestions,
+    };
+
+    // Common locations to search
+    let search_paths = vec![
+        home.join("Documents/GitHub"),
+        home.join("Documents"),
+        home.join("Projects"),
+        home.join("Code"),
+        home.join("repos"),
+        home.join("Developer"),
+        home.join("dev"),
+        home.clone(),
+    ];
+
+    for base_path in search_paths {
+        if !base_path.exists() {
+            continue;
+        }
+
+        // Check direct match
+        let direct = base_path.join(repo_name);
+        if direct.exists() && direct.join(".git").exists() {
+            suggestions.push(direct.to_string_lossy().to_string());
+        }
+
+        // Also check with owner prefix (e.g., KBVE/kbve -> kbve)
+        if github_repo.contains('/') {
+            let with_owner = base_path.join(&github_repo.replace('/', "-"));
+            if with_owner.exists() && with_owner.join(".git").exists() {
+                suggestions.push(with_owner.to_string_lossy().to_string());
+            }
+        }
+    }
+
+    // Also add current working directory if it's a git repo
+    if let Ok(cwd) = std::env::current_dir() {
+        if cwd.join(".git").exists() {
+            let cwd_str = cwd.to_string_lossy().to_string();
+            if !suggestions.contains(&cwd_str) {
+                suggestions.push(cwd_str);
+            }
+        }
+    }
+
+    suggestions
+}
+
 // ============================================================================
 // GitHub Issue Commands
 // ============================================================================
@@ -769,4 +833,52 @@ pub fn list_epic_plan_templates(app: AppHandle) -> Result<Vec<crate::devops::ope
         .map_err(|e| format!("Failed to get resource directory: {}", e))?;
 
     crate::devops::operations::list_plan_templates(&repo_root)
+}
+
+// ===== Epic Orchestration Commands =====
+
+/// Start orchestration for an epic - creates sub-issues and optionally spawns agents
+#[tauri::command]
+#[specta::specta]
+pub async fn start_epic_orchestration(
+    epic: crate::devops::operations::EpicInfo,
+    config: crate::devops::operations::StartOrchestrationConfig,
+) -> Result<crate::devops::operations::OrchestrationResult, String> {
+    crate::devops::operations::start_orchestration(&epic, config).await
+}
+
+/// Get status of all phases in an epic
+#[tauri::command]
+#[specta::specta]
+pub async fn get_epic_phase_status(
+    epic_number: u32,
+    epic_repo: String,
+    phases: Vec<crate::devops::operations::PhaseConfig>,
+) -> Result<Vec<crate::devops::operations::PhaseStatus>, String> {
+    crate::devops::operations::get_epic_phase_status(epic_number, &epic_repo, &phases).await
+}
+
+/// Load an existing epic from GitHub by issue number
+///
+/// Parses the epic's body to extract phases and metadata for orchestration.
+#[tauri::command]
+#[specta::specta]
+pub async fn load_epic(
+    repo: String,
+    epic_number: u32,
+) -> Result<crate::devops::operations::EpicInfo, String> {
+    crate::devops::operations::load_epic(repo, epic_number).await
+}
+
+/// Load an existing epic with full recovery information
+///
+/// Fetches the epic, all its sub-issues, and determines what work remains.
+/// Useful for recovering/continuing orchestration on an existing epic.
+#[tauri::command]
+#[specta::specta]
+pub async fn load_epic_for_recovery(
+    repo: String,
+    epic_number: u32,
+) -> Result<crate::devops::operations::EpicRecoveryInfo, String> {
+    crate::devops::operations::load_epic_for_recovery(repo, epic_number).await
 }

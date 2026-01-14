@@ -209,6 +209,12 @@ fn extract_phases(markdown: &str) -> Result<Vec<PhaseConfig>, String> {
     let mut phases = Vec::new();
     let mut current_phase: Option<PhaseConfig> = None;
     let mut current_description = Vec::new();
+    let mut current_tasks = Vec::new();
+    let mut current_files = Vec::new();
+    let mut current_deps = Vec::new();
+    let mut in_tasks = false;
+    let mut in_files = false;
+    let mut in_deps = false;
 
     for line in lines {
         if line.trim() == "## Phases" {
@@ -225,18 +231,30 @@ fn extract_phases(markdown: &str) -> Result<Vec<PhaseConfig>, String> {
             break;
         }
 
+        let trimmed = line.trim();
+
         // Phase heading: "### Phase N: Name" or "### Name"
-        if line.trim().starts_with("### ") {
+        if trimmed.starts_with("### ") {
             // Save previous phase if exists
             if let Some(mut phase) = current_phase.take() {
                 phase.description = current_description.join(" ").trim().to_string();
+                phase.tasks = current_tasks.clone();
+                phase.files = current_files.clone();
+                phase.dependencies = current_deps.clone();
                 phases.push(phase);
                 current_description.clear();
+                current_tasks.clear();
+                current_files.clear();
+                current_deps.clear();
             }
 
+            // Reset section flags
+            in_tasks = false;
+            in_files = false;
+            in_deps = false;
+
             // Extract phase name
-            let name = line
-                .trim()
+            let name = trimmed
                 .trim_start_matches("###")
                 .trim()
                 .split(':')
@@ -248,37 +266,94 @@ fn extract_phases(markdown: &str) -> Result<Vec<PhaseConfig>, String> {
             current_phase = Some(PhaseConfig {
                 name,
                 description: String::new(),
-                approach: "manual".to_string(), // Default
+                approach: "manual".to_string(),
+                tasks: Vec::new(),
+                files: Vec::new(),
+                dependencies: Vec::new(),
             });
             continue;
         }
 
         // Extract approach if specified
-        if line.trim().starts_with("**Approach**:") {
+        if trimmed.starts_with("**Approach**:") {
             if let Some(ref mut phase) = current_phase {
-                let approach = line
-                    .trim()
+                let approach = trimmed
                     .trim_start_matches("**Approach**:")
                     .trim()
                     .to_lowercase();
                 phase.approach = approach;
             }
+            in_tasks = false;
+            in_files = false;
+            in_deps = false;
+            continue;
+        }
+
+        // Detect section headers
+        if trimmed.starts_with("**Key Tasks**:") || trimmed.starts_with("**Tasks**:") {
+            in_tasks = true;
+            in_files = false;
+            in_deps = false;
+            continue;
+        }
+        if trimmed.starts_with("**Files**:") {
+            in_tasks = false;
+            in_files = true;
+            in_deps = false;
+            continue;
+        }
+        if trimmed.starts_with("**Dependencies**:") {
+            in_tasks = false;
+            in_files = false;
+            in_deps = true;
+            // Check for inline "None"
+            let dep_value = trimmed.trim_start_matches("**Dependencies**:").trim();
+            if dep_value.eq_ignore_ascii_case("none") {
+                current_deps.clear();
+                in_deps = false;
+            }
             continue;
         }
 
         // Skip horizontal rules and empty lines for description
-        let trimmed = line.trim();
         if trimmed == "---" || trimmed.is_empty() {
+            // Empty line ends the current section
+            if in_tasks || in_files || in_deps {
+                in_tasks = false;
+                in_files = false;
+                in_deps = false;
+            }
             continue;
         }
 
-        // Skip lines that start with ** (metadata fields)
+        // Skip other ** metadata fields
         if trimmed.starts_with("**") {
+            in_tasks = false;
+            in_files = false;
+            in_deps = false;
             continue;
         }
 
-        // Accumulate description lines
-        if current_phase.is_some() && !trimmed.is_empty() {
+        // Collect list items based on current section
+        if trimmed.starts_with("- ") {
+            let item = trimmed.trim_start_matches("- ").trim().to_string();
+            if in_tasks && current_phase.is_some() {
+                current_tasks.push(item);
+            } else if in_files && current_phase.is_some() {
+                // Clean up file paths (remove backticks)
+                let file = item.trim_matches('`').to_string();
+                current_files.push(file);
+            } else if in_deps && current_phase.is_some() {
+                current_deps.push(item);
+            } else if current_phase.is_some() {
+                // Regular description list items
+                current_description.push(trimmed);
+            }
+            continue;
+        }
+
+        // Accumulate description lines (only if not in a specific section)
+        if current_phase.is_some() && !in_tasks && !in_files && !in_deps {
             current_description.push(trimmed);
         }
     }
@@ -286,6 +361,9 @@ fn extract_phases(markdown: &str) -> Result<Vec<PhaseConfig>, String> {
     // Save last phase
     if let Some(mut phase) = current_phase {
         phase.description = current_description.join(" ").trim().to_string();
+        phase.tasks = current_tasks;
+        phase.files = current_files;
+        phase.dependencies = current_deps;
         phases.push(phase);
     }
 
@@ -389,5 +467,64 @@ Comprehensive tests for workflows.
         assert!(phases[0].description.contains("Build test utilities"));
         assert_eq!(phases[1].name, "Integration");
         assert_eq!(phases[1].approach, "agent-assisted");
+    }
+
+    #[test]
+    fn test_extract_phases_with_tasks_and_files() {
+        let markdown = r#"
+## Phases
+
+### Phase 1: Core Infrastructure
+
+**Approach**: manual
+
+Build backend infrastructure for pipeline state tracking.
+
+**Key Tasks**:
+- Create `PipelineItem` struct linking issue → session → worktree → PR
+- Add `list_pipeline_items` command to aggregate current state
+- Store pipeline state in persistent storage
+
+**Files**:
+- `src-tauri/src/devops/pipeline.rs` (new)
+- `src-tauri/src/commands/devops.rs` (add commands)
+
+**Dependencies**: None
+
+---
+
+### Phase 2: Frontend
+
+**Approach**: agent-assisted
+
+Build the Orchestration tab UI.
+
+**Key Tasks**:
+- Add "Orchestration" tab to DevOpsLayout
+- Create OrchestrationTab component
+
+**Dependencies**: Phase 1 complete
+
+## Design
+"#;
+        let phases = extract_phases(markdown).unwrap();
+        assert_eq!(phases.len(), 2);
+
+        // Phase 1
+        assert_eq!(phases[0].name, "Core Infrastructure");
+        assert_eq!(phases[0].approach, "manual");
+        assert_eq!(phases[0].tasks.len(), 3);
+        assert!(phases[0].tasks[0].contains("PipelineItem"));
+        assert_eq!(phases[0].files.len(), 2);
+        assert!(phases[0].files[0].contains("pipeline.rs"));
+        assert!(phases[0].dependencies.is_empty()); // "None" should result in empty vec
+
+        // Phase 2
+        assert_eq!(phases[1].name, "Frontend");
+        assert_eq!(phases[1].approach, "agent-assisted");
+        assert_eq!(phases[1].tasks.len(), 2);
+        assert!(phases[1].tasks[0].contains("Orchestration"));
+        assert_eq!(phases[1].dependencies.len(), 1);
+        assert!(phases[1].dependencies[0].contains("Phase 1"));
     }
 }

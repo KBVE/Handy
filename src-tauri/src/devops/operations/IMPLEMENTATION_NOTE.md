@@ -54,7 +54,7 @@ pub async fn spawn_agent_from_issue(config: SpawnAgentConfig) -> Result<AgentSpa
         agent_type: config.agent_type.unwrap_or_else(|| extract_agent_type(&issue.body).unwrap()),
         session_name: config.session_name,
         worktree_prefix: None,
-        working_labels: vec!["agent-assigned".to_string()],
+        working_labels: vec!["staging".to_string()],
     };
 
     let result = orchestrator::spawn_agent(&spawn_config)?;

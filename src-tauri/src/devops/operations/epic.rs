@@ -34,6 +34,15 @@ pub struct PhaseConfig {
     pub description: String,
     /// Approach: "manual", "agent-assisted", or "automated"
     pub approach: String,
+    /// Key tasks for this phase (each becomes a sub-issue)
+    #[serde(default)]
+    pub tasks: Vec<String>,
+    /// Files to modify (optional context for agents)
+    #[serde(default)]
+    pub files: Vec<String>,
+    /// Dependencies - names of phases that must complete first
+    #[serde(default)]
+    pub dependencies: Vec<String>,
 }
 
 /// Information about a created epic
@@ -218,9 +227,13 @@ pub async fn create_sub_issues(
         // Create GitHub issue
         let issue_number = github::create_issue_async(&epic_repo, &config.title, &body).await?;
 
-        // Add labels
-        let labels = vec!["agent-ready".to_string(), format!("phase-{}", config.phase)];
-        github::add_labels_async(&epic_repo, issue_number, &labels).await?;
+        // Add labels - only use standard labels that exist in the repo
+        // Phase info is tracked in the issue body, not via labels
+        let labels = vec!["todo".to_string()];
+        if let Err(e) = github::add_labels_async(&epic_repo, issue_number, &labels).await {
+            eprintln!("Warning: Failed to add labels to issue #{}: {}", issue_number, e);
+            // Continue anyway - labels are nice to have but not critical
+        }
 
         created.push(SubIssueInfo {
             issue_number,
@@ -372,6 +385,282 @@ fn update_progress_section(
     result.join("\n")
 }
 
+/// Load an existing epic from GitHub by issue number
+///
+/// Parses the epic's body to extract phases and metadata.
+/// Returns an EpicInfo that can be used for orchestration.
+pub async fn load_epic(repo: String, epic_number: u32) -> Result<EpicInfo, String> {
+    // Fetch the issue from GitHub
+    let issue = github::get_issue_async(&repo, epic_number).await?;
+
+    // Verify it's an epic (has [EPIC] prefix or epic label)
+    let is_epic = issue.title.starts_with("[EPIC]")
+        || issue.labels.iter().any(|l| l.eq_ignore_ascii_case("epic"));
+
+    if !is_epic {
+        return Err(format!(
+            "Issue #{} is not an epic (missing [EPIC] prefix or 'epic' label)",
+            epic_number
+        ));
+    }
+
+    // Extract title (remove [EPIC] prefix if present)
+    let title = issue
+        .title
+        .trim_start_matches("[EPIC]")
+        .trim()
+        .to_string();
+
+    // Parse body to extract work_repo and phases
+    let body = issue.body.as_deref().unwrap_or("");
+    let work_repo = extract_work_repo_from_body(body).unwrap_or_else(|| repo.clone());
+    let phases = extract_phases_from_body(body);
+
+    Ok(EpicInfo {
+        epic_number,
+        repo: repo.clone(),
+        work_repo,
+        title,
+        url: issue.url,
+        phases,
+    })
+}
+
+/// Information about an existing sub-issue linked to an epic
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct ExistingSubIssue {
+    /// Issue number
+    pub issue_number: u32,
+    /// Issue title
+    pub title: String,
+    /// Phase number (extracted from labels)
+    pub phase: Option<u32>,
+    /// Current state (open/closed)
+    pub state: String,
+    /// Labels on the issue
+    pub labels: Vec<String>,
+    /// URL to the issue
+    pub url: String,
+    /// Whether an agent is currently working on it
+    pub has_agent_working: bool,
+}
+
+/// Recovery information for an epic
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct EpicRecoveryInfo {
+    /// The epic info
+    pub epic: EpicInfo,
+    /// Existing sub-issues for this epic
+    pub sub_issues: Vec<ExistingSubIssue>,
+    /// Progress statistics
+    pub progress: EpicProgress,
+    /// Phases that have no sub-issues yet
+    pub phases_without_issues: Vec<u32>,
+    /// Sub-issues that are ready for agents (have todo label, not closed)
+    pub ready_for_agents: Vec<ExistingSubIssue>,
+    /// Sub-issues that have agents actively working
+    pub in_progress: Vec<ExistingSubIssue>,
+}
+
+/// Load an existing epic with full recovery information
+///
+/// This fetches the epic, all its sub-issues, and determines what work
+/// remains to be done. Useful for recovering/continuing orchestration.
+pub async fn load_epic_for_recovery(repo: String, epic_number: u32) -> Result<EpicRecoveryInfo, String> {
+    // Load basic epic info
+    let epic = load_epic(repo.clone(), epic_number).await?;
+
+    // Find all sub-issues that reference this epic
+    let all_issues = github::list_issues_async(&repo, vec![]).await?;
+    let sub_issues: Vec<ExistingSubIssue> = all_issues
+        .into_iter()
+        .filter(|issue| {
+            issue
+                .body
+                .as_ref()
+                .map(|b| b.contains(&format!("Epic**: #{}", epic_number)))
+                .unwrap_or(false)
+        })
+        .map(|issue| {
+            // Extract phase number from body (e.g., "**Phase**: 1")
+            let phase = issue.body.as_ref().and_then(|body| {
+                // Look for "**Phase**: N" pattern
+                body.lines()
+                    .find(|line| line.contains("**Phase**:"))
+                    .and_then(|line| {
+                        line.split("**Phase**:")
+                            .nth(1)
+                            .and_then(|s| s.trim().parse().ok())
+                    })
+            });
+
+            let has_agent_working = issue.labels.iter().any(|l| l == "staging");
+
+            ExistingSubIssue {
+                issue_number: issue.number as u32,
+                title: issue.title,
+                phase,
+                state: issue.state,
+                labels: issue.labels,
+                url: issue.url,
+                has_agent_working,
+            }
+        })
+        .collect();
+
+    // Calculate progress
+    let total = sub_issues.len();
+    let completed = sub_issues.iter().filter(|i| i.state == "closed").count();
+    let percentage = if total > 0 { (completed * 100) / total } else { 0 };
+
+    let progress = EpicProgress {
+        total,
+        completed,
+        percentage,
+        remaining: total - completed,
+    };
+
+    // Find phases that have no sub-issues
+    let phases_with_issues: std::collections::HashSet<u32> = sub_issues
+        .iter()
+        .filter_map(|i| i.phase)
+        .collect();
+
+    let phases_without_issues: Vec<u32> = (1..=epic.phases.len() as u32)
+        .filter(|p| !phases_with_issues.contains(p))
+        .collect();
+
+    // Find issues ready for agents
+    let ready_for_agents: Vec<ExistingSubIssue> = sub_issues
+        .iter()
+        .filter(|i| {
+            i.state == "open"
+                && i.labels.iter().any(|l| l == "todo")
+                && !i.has_agent_working
+        })
+        .cloned()
+        .collect();
+
+    // Find issues with agents in progress
+    let in_progress: Vec<ExistingSubIssue> = sub_issues
+        .iter()
+        .filter(|i| i.has_agent_working)
+        .cloned()
+        .collect();
+
+    Ok(EpicRecoveryInfo {
+        epic,
+        sub_issues,
+        progress,
+        phases_without_issues,
+        ready_for_agents,
+        in_progress,
+    })
+}
+
+/// Extract work repository from epic body
+fn extract_work_repo_from_body(body: &str) -> Option<String> {
+    for line in body.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("**Work Repository**:") {
+            let repo = trimmed
+                .trim_start_matches("**Work Repository**:")
+                .trim()
+                .to_string();
+            if !repo.is_empty() {
+                return Some(repo);
+            }
+        }
+    }
+    None
+}
+
+/// Extract phases from epic body
+fn extract_phases_from_body(body: &str) -> Vec<PhaseConfig> {
+    let mut phases = Vec::new();
+    let mut in_phases = false;
+    let mut current_phase: Option<PhaseConfig> = None;
+    let mut current_description = Vec::new();
+
+    for line in body.lines() {
+        let trimmed = line.trim();
+
+        // Start of phases section
+        if trimmed == "## Phases" {
+            in_phases = true;
+            continue;
+        }
+
+        if !in_phases {
+            continue;
+        }
+
+        // Stop at next top-level section
+        if trimmed.starts_with("## ") && trimmed != "## Phases" {
+            break;
+        }
+
+        // Phase heading: "### Phase N: Name"
+        if trimmed.starts_with("### ") {
+            // Save previous phase
+            if let Some(mut phase) = current_phase.take() {
+                phase.description = current_description.join(" ").trim().to_string();
+                phases.push(phase);
+                current_description.clear();
+            }
+
+            // Extract phase name (after "Phase N: ")
+            let name = trimmed
+                .trim_start_matches("###")
+                .trim()
+                .split(':')
+                .last()
+                .unwrap_or("")
+                .trim()
+                .to_string();
+
+            current_phase = Some(PhaseConfig {
+                name,
+                description: String::new(),
+                approach: "manual".to_string(),
+                tasks: Vec::new(),
+                files: Vec::new(),
+                dependencies: Vec::new(),
+            });
+            continue;
+        }
+
+        // Extract approach
+        if trimmed.starts_with("**Approach**:") {
+            if let Some(ref mut phase) = current_phase {
+                phase.approach = trimmed
+                    .trim_start_matches("**Approach**:")
+                    .trim()
+                    .to_lowercase();
+            }
+            continue;
+        }
+
+        // Skip metadata lines and horizontal rules
+        if trimmed.starts_with("**") || trimmed == "---" || trimmed.is_empty() {
+            continue;
+        }
+
+        // Accumulate description
+        if current_phase.is_some() {
+            current_description.push(trimmed);
+        }
+    }
+
+    // Save last phase
+    if let Some(mut phase) = current_phase {
+        phase.description = current_description.join(" ").trim().to_string();
+        phases.push(phase);
+    }
+
+    phases
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -388,6 +677,9 @@ mod tests {
                 name: "Phase 1".to_string(),
                 description: "Test phase".to_string(),
                 approach: "manual".to_string(),
+                tasks: vec![],
+                files: vec![],
+                dependencies: vec![],
             }],
             labels: vec![],
         };

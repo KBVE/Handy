@@ -1,6 +1,13 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { EpicConfig, EpicInfo, PhaseConfig } from "../../../bindings";
+import type {
+  EpicConfig,
+  EpicInfo,
+  EpicRecoveryInfo,
+  PhaseConfig,
+  StartOrchestrationConfig,
+  OrchestrationResult,
+} from "../../../bindings";
 import { toast } from "../../../stores/toastStore";
 
 interface PlanTemplate {
@@ -72,13 +79,21 @@ const EPIC_TEMPLATES: Record<string, EpicPlan> = {
   },
 };
 
-type Step = "template" | "edit" | "review";
+type Step = "template" | "edit" | "review" | "link";
+type CreateMode = "new" | "link";
 
 export function GenericEpicCreator() {
   const [currentStep, setCurrentStep] = useState<Step>("template");
+  const [createMode, setCreateMode] = useState<CreateMode>("new");
   const [selectedTemplate, setSelectedTemplate] = useState<string>("blank");
   const [repo, setRepo] = useState<string>("KBVE/Handy");
   const [workRepo, setWorkRepo] = useState<string>("");
+
+  // Link existing epic state
+  const [linkEpicNumber, setLinkEpicNumber] = useState<string>("");
+  const [linkRepo, setLinkRepo] = useState<string>("KBVE/Handy");
+  const [linking, setLinking] = useState(false);
+  const [recoveryInfo, setRecoveryInfo] = useState<EpicRecoveryInfo | null>(null);
 
   // Loaded templates from filesystem
   const [templates, setTemplates] = useState<PlanTemplate[]>([
@@ -107,6 +122,13 @@ export function GenericEpicCreator() {
   const [creating, setCreating] = useState(false);
   const [result, setResult] = useState<EpicInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Orchestration state
+  const [orchestrating, setOrchestrating] = useState(false);
+  const [orchestrationResult, setOrchestrationResult] = useState<OrchestrationResult | null>(null);
+  const [autoSpawnAgents, setAutoSpawnAgents] = useState(false);
+  const [localRepoPath, setLocalRepoPath] = useState<string>("");
+  const [repoPathSuggestions, setRepoPathSuggestions] = useState<string[]>([]);
 
   // New metric/label/phase inputs
   const [newMetric, setNewMetric] = useState<string>("");
@@ -319,8 +341,42 @@ export function GenericEpicCreator() {
     }
   };
 
+  const handleLinkEpic = async () => {
+    const epicNum = parseInt(linkEpicNumber, 10);
+    if (isNaN(epicNum) || epicNum <= 0) {
+      toast.error("Invalid Epic Number", "Please enter a valid issue number");
+      return;
+    }
+
+    setLinking(true);
+    setError(null);
+
+    try {
+      // First try to load with full recovery info
+      const recovery = await invoke<EpicRecoveryInfo>("load_epic_for_recovery", {
+        repo: linkRepo,
+        epicNumber: epicNum,
+      });
+
+      setRecoveryInfo(recovery);
+      setResult(recovery.epic);
+
+      toast.success(
+        "Epic Linked Successfully",
+        `Linked to Epic #${recovery.epic.epic_number}: ${recovery.epic.title}`,
+        8000
+      );
+    } catch (err) {
+      setError(err as string);
+      toast.error("Failed to Link Epic", err as string, 10000);
+    } finally {
+      setLinking(false);
+    }
+  };
+
   const resetForm = () => {
     setCurrentStep("template");
+    setCreateMode("new");
     setSelectedTemplate("blank");
     setTitle("");
     setGoal("");
@@ -329,16 +385,62 @@ export function GenericEpicCreator() {
     setLabels([]);
     setResult(null);
     setError(null);
+    setOrchestrationResult(null);
+    setAutoSpawnAgents(false);
+    setLinkEpicNumber("");
+    setRecoveryInfo(null);
+  };
+
+  // Start orchestration - create sub-issues and spawn agents
+  const handleStartOrchestration = async (phasesToStart: number[] = [1]) => {
+    if (!result) return;
+
+    setOrchestrating(true);
+    try {
+      const config: StartOrchestrationConfig = {
+        phases: phasesToStart,
+        auto_spawn_agents: autoSpawnAgents,
+        default_agent_type: "claude",
+        worktree_base: localRepoPath,
+      };
+
+      const orchResult = await invoke<OrchestrationResult>("start_epic_orchestration", {
+        epic: result,
+        config,
+      });
+
+      setOrchestrationResult(orchResult);
+
+      if (orchResult.sub_issues.length > 0) {
+        toast.success(
+          "Orchestration Started",
+          `Created ${orchResult.sub_issues.length} sub-issues${orchResult.spawned_agents.length > 0 ? ` and spawned ${orchResult.spawned_agents.length} agents` : ""}`,
+          8000
+        );
+      }
+
+      if (orchResult.warnings.length > 0) {
+        orchResult.warnings.forEach((warning) => {
+          toast.warning("Orchestration Warning", warning, 6000);
+        });
+      }
+    } catch (err) {
+      console.error("Failed to start orchestration:", err);
+      toast.error("Orchestration Failed", err as string, 10000);
+    } finally {
+      setOrchestrating(false);
+    }
   };
 
   // Success State - render first so we can return early
   if (result) {
+    const isLinkedEpic = recoveryInfo !== null;
     return (
       <div className="p-4 bg-green-500/10 border border-green-500/20 rounded space-y-3">
         <div className="flex items-center gap-2">
           <span className="text-green-400 text-lg">✓</span>
           <span className="text-sm font-medium text-white">
-            Epic Created Successfully!
+            {isLinkedEpic ? "Epic Linked Successfully!" : "Epic Created Successfully!"}
           </span>
         </div>
         <div className="space-y-1 text-xs text-gray-300">
@@ -349,6 +451,10 @@ export function GenericEpicCreator() {
           <div>
             <span className="text-gray-400">Repository:</span>{" "}
             <span className="font-mono text-white">{result.repo}</span>
+          </div>
+          <div>
+            <span className="text-gray-400">Work Repository:</span>{" "}
+            <span className="font-mono text-white">{result.work_repo}</span>
           </div>
           <div>
             <span className="text-gray-400">Phases:</span>{" "}
@@ -365,14 +471,228 @@ export function GenericEpicCreator() {
             </a>
           </div>
         </div>
-        <div className="mt-3 pt-3 border-t border-green-500/20 text-xs text-gray-400">
-          <strong>Next steps:</strong>
-          <ol className="mt-1 ml-4 list-decimal space-y-1">
-            <li>Create sub-issues for each phase</li>
-            <li>Implement manual phases</li>
-            <li>Spawn agents for agent-assisted phases</li>
-          </ol>
-        </div>
+
+        {/* Recovery Info for Linked Epics */}
+        {recoveryInfo && (
+          <div className="mt-3 pt-3 border-t border-green-500/20">
+            <div className="text-xs text-green-400 font-medium mb-2">
+              Epic Status:
+            </div>
+            <div className="space-y-2 text-xs text-gray-300">
+              <div className="flex gap-4">
+                <div>
+                  Progress: <span className="text-white font-medium">{recoveryInfo.progress.completed}/{recoveryInfo.progress.total}</span>
+                  {recoveryInfo.progress.total > 0 && (
+                    <span className="text-gray-400 ml-1">({recoveryInfo.progress.percentage}%)</span>
+                  )}
+                </div>
+                <div>
+                  Remaining: <span className="text-white">{recoveryInfo.progress.remaining}</span>
+                </div>
+              </div>
+
+              {recoveryInfo.in_progress.length > 0 && (
+                <div>
+                  <span className="text-yellow-400">In Progress ({recoveryInfo.in_progress.length}):</span>
+                  <ul className="mt-1 ml-4 list-disc space-y-0.5">
+                    {recoveryInfo.in_progress.map((issue) => (
+                      <li key={issue.issue_number}>
+                        <a
+                          href={issue.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-400 hover:text-blue-300"
+                        >
+                          #{issue.issue_number}
+                        </a>{" "}
+                        - {issue.title.substring(0, 40)}...
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {recoveryInfo.ready_for_agents.length > 0 && (
+                <div>
+                  <span className="text-green-400">Ready for Agents ({recoveryInfo.ready_for_agents.length}):</span>
+                  <ul className="mt-1 ml-4 list-disc space-y-0.5">
+                    {recoveryInfo.ready_for_agents.slice(0, 5).map((issue) => (
+                      <li key={issue.issue_number}>
+                        <a
+                          href={issue.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-400 hover:text-blue-300"
+                        >
+                          #{issue.issue_number}
+                        </a>{" "}
+                        - {issue.title.substring(0, 40)}...
+                      </li>
+                    ))}
+                    {recoveryInfo.ready_for_agents.length > 5 && (
+                      <li className="text-gray-500">
+                        ...and {recoveryInfo.ready_for_agents.length - 5} more
+                      </li>
+                    )}
+                  </ul>
+                </div>
+              )}
+
+              {recoveryInfo.phases_without_issues.length > 0 && (
+                <div className="text-yellow-400">
+                  Phases without sub-issues: {recoveryInfo.phases_without_issues.join(", ")}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Orchestration Result */}
+        {orchestrationResult && (
+          <div className="mt-3 pt-3 border-t border-green-500/20">
+            <div className="text-xs text-green-400 font-medium mb-2">
+              Orchestration Results:
+            </div>
+            <div className="space-y-1 text-xs text-gray-300">
+              <div>
+                Sub-issues created: <span className="text-white">{orchestrationResult.sub_issues.length}</span>
+              </div>
+              {orchestrationResult.spawned_agents.length > 0 && (
+                <div>
+                  Agents spawned: <span className="text-white">{orchestrationResult.spawned_agents.length}</span>
+                </div>
+              )}
+              {orchestrationResult.sub_issues.length > 0 && (
+                <div className="mt-2">
+                  <span className="text-gray-400">Created issues:</span>
+                  <ul className="mt-1 ml-4 list-disc space-y-0.5">
+                    {orchestrationResult.sub_issues.slice(0, 5).map((issue) => (
+                      <li key={issue.issue_number}>
+                        <a
+                          href={issue.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-400 hover:text-blue-300"
+                        >
+                          #{issue.issue_number}
+                        </a>{" "}
+                        - {issue.title.substring(0, 40)}...
+                      </li>
+                    ))}
+                    {orchestrationResult.sub_issues.length > 5 && (
+                      <li className="text-gray-500">
+                        ...and {orchestrationResult.sub_issues.length - 5} more
+                      </li>
+                    )}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Start Orchestration Section */}
+        {!orchestrationResult && (
+          <div className="mt-3 pt-3 border-t border-green-500/20">
+            <div className="text-xs text-gray-400 mb-2">
+              <strong>Start Orchestration:</strong>
+              <p className="mt-1">
+                This will create sub-issues from phase tasks and optionally spawn agents.
+              </p>
+            </div>
+
+            {/* Options */}
+            <div className="space-y-2 mb-3">
+              <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoSpawnAgents}
+                  onChange={(e) => setAutoSpawnAgents(e.target.checked)}
+                  className="rounded border-mid-gray/30 bg-mid-gray/10 text-blue-500 focus:ring-blue-500"
+                />
+                Auto-spawn agents for agent-assisted tasks
+              </label>
+
+              {autoSpawnAgents && (
+                <div className="ml-6">
+                  <label className="block text-xs text-gray-400 mb-1">
+                    Local Git Repository Path (for worktrees)
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={localRepoPath}
+                      onChange={(e) => setLocalRepoPath(e.target.value)}
+                      placeholder="/Users/me/projects/MyRepo"
+                      className="flex-1 px-2 py-1.5 bg-mid-gray/20 border border-mid-gray/30 rounded text-xs text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const suggestions = await invoke<string[]>("suggest_local_repo_path", {
+                            githubRepo: result?.work_repo || workRepo || repo,
+                          });
+                          setRepoPathSuggestions(suggestions);
+                          if (suggestions.length > 0 && !localRepoPath) {
+                            setLocalRepoPath(suggestions[0]);
+                          }
+                        } catch (err) {
+                          console.error("Failed to suggest repo path:", err);
+                        }
+                      }}
+                      className="px-2 py-1.5 bg-mid-gray/30 hover:bg-mid-gray/40 text-gray-300 text-xs rounded transition-colors"
+                    >
+                      Detect
+                    </button>
+                  </div>
+                  {repoPathSuggestions.length > 1 && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {repoPathSuggestions.map((path, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setLocalRepoPath(path)}
+                          className={`px-2 py-0.5 text-[10px] rounded transition-colors ${
+                            localRepoPath === path
+                              ? "bg-blue-500/30 text-blue-300"
+                              : "bg-mid-gray/20 text-gray-400 hover:bg-mid-gray/30"
+                          }`}
+                        >
+                          {path.split("/").slice(-2).join("/")}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-[10px] text-gray-500 mt-1">
+                    Full filesystem path to a local git repo where worktrees will be created
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Phase buttons */}
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => handleStartOrchestration([1])}
+                disabled={orchestrating}
+                className="px-3 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-xs rounded transition-colors disabled:opacity-50"
+              >
+                {orchestrating ? "Starting..." : "Start Phase 1"}
+              </button>
+              {result.phases.length > 1 && (
+                <button
+                  onClick={() => handleStartOrchestration(result.phases.map((_, i) => i + 1))}
+                  disabled={orchestrating}
+                  className="px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 text-xs rounded transition-colors disabled:opacity-50"
+                >
+                  {orchestrating ? "Starting..." : "Start All Phases"}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         <button
           onClick={resetForm}
           className="w-full mt-3 px-4 py-2 bg-mid-gray/20 hover:bg-mid-gray/30 text-white text-sm rounded transition-colors"
@@ -383,96 +703,167 @@ export function GenericEpicCreator() {
     );
   }
 
-  // Main wizard - use single container with hidden sections to avoid DOM unmounting issues
-  // This prevents OverlayScrollbars from breaking when steps change
-  return (
-    <div className="space-y-4">
-      {/* Step 1: Template Selection */}
-      <div className={currentStep === "template" ? "" : "hidden"}>
-        <div className="space-y-3">
-          {templatesLoading && (
-            <div className="text-xs text-gray-400 py-2">
-              Loading templates...
-            </div>
-          )}
+  // Render the mode toggle for Step 1
+  const renderModeToggle = () => (
+    <div className="flex gap-2 mb-4">
+      <button
+        onClick={() => setCreateMode("new")}
+        className={`flex-1 px-3 py-2 text-sm rounded transition-colors ${
+          createMode === "new"
+            ? "bg-blue-600 text-white"
+            : "bg-mid-gray/20 text-gray-400 hover:bg-mid-gray/30"
+        }`}
+      >
+        Create New Epic
+      </button>
+      <button
+        onClick={() => setCreateMode("link")}
+        className={`flex-1 px-3 py-2 text-sm rounded transition-colors ${
+          createMode === "link"
+            ? "bg-blue-600 text-white"
+            : "bg-mid-gray/20 text-gray-400 hover:bg-mid-gray/30"
+        }`}
+      >
+        Link Existing Epic
+      </button>
+    </div>
+  );
 
-          {templatesError && (
-            <div className="text-xs text-yellow-400 py-2">
-              Note: Using fallback templates (could not load from docs/plans/)
-            </div>
-          )}
+  // Render the Link Existing Epic form
+  const renderLinkForm = () => (
+    <div className="space-y-3">
+      <div>
+        <label className="block text-xs text-gray-400 mb-1.5">
+          Repository <span className="text-red-400">*</span>
+        </label>
+        <input
+          type="text"
+          value={linkRepo}
+          onChange={(e) => setLinkRepo(e.target.value)}
+          placeholder="org/repo"
+          className="w-full px-3 py-2 bg-mid-gray/10 border border-mid-gray/20 rounded text-sm text-white focus:outline-none focus:border-blue-500 font-mono"
+        />
+      </div>
 
-          <div>
-            <label className="block text-xs text-gray-400 mb-1.5">
-              Choose Template
-            </label>
-            <select
-              value={selectedTemplate}
-              onChange={(e) => handleTemplateChange(e.target.value)}
-              className="w-full px-3 py-2 bg-mid-gray/10 border border-mid-gray/20 rounded text-sm text-white focus:outline-none focus:border-blue-500"
-              disabled={templatesLoading}
-            >
-              {templates.map((template) => (
-                <option key={template.id} value={template.id}>
-                  {template.title || "Blank (Start from scratch)"} {template.description && `- ${template.description}`}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs text-gray-400 mb-1.5">
-              Tracking Repository{" "}
-              <span className="text-gray-500">
-                (where Epic/Sub-issues are created)
-              </span>
-            </label>
-            <input
-              type="text"
-              value={repo}
-              onChange={(e) => setRepo(e.target.value)}
-              placeholder="org/repo"
-              className="w-full px-3 py-2 bg-mid-gray/10 border border-mid-gray/20 rounded text-sm text-white focus:outline-none focus:border-blue-500 font-mono"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs text-gray-400 mb-1.5">
-              Work Repository{" "}
-              <span className="text-gray-500">
-                (optional - where code lives and agents work)
-              </span>
-            </label>
-            <input
-              type="text"
-              value={workRepo}
-              onChange={(e) => setWorkRepo(e.target.value)}
-              placeholder="Leave empty to use tracking repo"
-              className="w-full px-3 py-2 bg-mid-gray/10 border border-mid-gray/20 rounded text-sm text-white focus:outline-none focus:border-blue-500 font-mono"
-            />
-            <div className="mt-1 text-xs text-gray-500">
-              If your issues are tracked in one repo but code lives in another
-            </div>
-          </div>
-
-          {selectedTemplate !== "blank" && templates.find((t) => t.id === selectedTemplate) && (
-            <div className="p-3 bg-mid-gray/5 border border-mid-gray/10 rounded space-y-2">
-              <div className="text-xs">
-                <div className="text-gray-400">Template Preview:</div>
-                <div className="text-gray-300 mt-1">
-                  {templates.find((t) => t.id === selectedTemplate)?.goal}
-                </div>
-              </div>
-              <div className="text-xs">
-                <div className="text-gray-400">
-                  Phases: {templates.find((t) => t.id === selectedTemplate)?.phases.length || 0} |
-                  Metrics:{" "}
-                  {templates.find((t) => t.id === selectedTemplate)?.success_metrics.length || 0}
-                </div>
-              </div>
-            </div>
-          )}
+      <div>
+        <label className="block text-xs text-gray-400 mb-1.5">
+          Epic Issue Number <span className="text-red-400">*</span>
+        </label>
+        <input
+          type="text"
+          value={linkEpicNumber}
+          onChange={(e) => setLinkEpicNumber(e.target.value.replace(/\D/g, ""))}
+          placeholder="e.g., 123"
+          className="w-full px-3 py-2 bg-mid-gray/10 border border-mid-gray/20 rounded text-sm text-white focus:outline-none focus:border-blue-500 font-mono"
+        />
+        <div className="mt-1 text-xs text-gray-500">
+          Enter the GitHub issue number of an existing epic to link and continue orchestration
         </div>
+      </div>
+
+      {error && (
+        <div className="p-3 bg-red-500/10 border border-red-500/20 rounded text-sm text-red-400">
+          <strong>Error:</strong> {error}
+        </div>
+      )}
+
+      <button
+        onClick={handleLinkEpic}
+        disabled={linking || !linkRepo.trim() || !linkEpicNumber.trim()}
+        className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm rounded transition-colors font-medium"
+      >
+        {linking ? "Linking Epic..." : "Link Epic"}
+      </button>
+    </div>
+  );
+
+  // Render the Create New Epic template selection form
+  const renderNewEpicForm = () => {
+    const selectedTemplateData = templates.find((t) => t.id === selectedTemplate);
+
+    return (
+      <div className="space-y-3">
+        {templatesLoading && (
+          <div className="text-xs text-gray-400 py-2">
+            Loading templates...
+          </div>
+        )}
+
+        {templatesError && (
+          <div className="text-xs text-yellow-400 py-2">
+            Note: Using fallback templates (could not load from docs/plans/)
+          </div>
+        )}
+
+        <div>
+          <label className="block text-xs text-gray-400 mb-1.5">
+            Choose Template
+          </label>
+          <select
+            value={selectedTemplate}
+            onChange={(e) => handleTemplateChange(e.target.value)}
+            className="w-full px-3 py-2 bg-mid-gray/10 border border-mid-gray/20 rounded text-sm text-white focus:outline-none focus:border-blue-500"
+            disabled={templatesLoading}
+          >
+            {templates.map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.title || "Blank (Start from scratch)"} {template.description && `- ${template.description}`}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs text-gray-400 mb-1.5">
+            Tracking Repository{" "}
+            <span className="text-gray-500">
+              (where Epic/Sub-issues are created)
+            </span>
+          </label>
+          <input
+            type="text"
+            value={repo}
+            onChange={(e) => setRepo(e.target.value)}
+            placeholder="org/repo"
+            className="w-full px-3 py-2 bg-mid-gray/10 border border-mid-gray/20 rounded text-sm text-white focus:outline-none focus:border-blue-500 font-mono"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs text-gray-400 mb-1.5">
+            Work Repository{" "}
+            <span className="text-gray-500">
+              (optional - where code lives and agents work)
+            </span>
+          </label>
+          <input
+            type="text"
+            value={workRepo}
+            onChange={(e) => setWorkRepo(e.target.value)}
+            placeholder="Leave empty to use tracking repo"
+            className="w-full px-3 py-2 bg-mid-gray/10 border border-mid-gray/20 rounded text-sm text-white focus:outline-none focus:border-blue-500 font-mono"
+          />
+          <div className="mt-1 text-xs text-gray-500">
+            If your issues are tracked in one repo but code lives in another
+          </div>
+        </div>
+
+        {selectedTemplate !== "blank" && selectedTemplateData && (
+          <div className="p-3 bg-mid-gray/5 border border-mid-gray/10 rounded space-y-2">
+            <div className="text-xs">
+              <div className="text-gray-400">Template Preview:</div>
+              <div className="text-gray-300 mt-1">
+                {selectedTemplateData.goal}
+              </div>
+            </div>
+            <div className="text-xs">
+              <div className="text-gray-400">
+                Phases: {selectedTemplateData.phases.length} |
+                Metrics: {selectedTemplateData.success_metrics.length}
+              </div>
+            </div>
+          </div>
+        )}
 
         <button
           onClick={handleTemplateSelect}
@@ -481,6 +872,18 @@ export function GenericEpicCreator() {
         >
           Next: Edit Plan →
         </button>
+      </div>
+    );
+  };
+
+  // Main wizard - use single container with hidden sections to avoid DOM unmounting issues
+  // This prevents OverlayScrollbars from breaking when steps change
+  return (
+    <div className="space-y-4">
+      {/* Step 1: Template Selection or Link Existing */}
+      <div className={currentStep === "template" ? "" : "hidden"}>
+        {renderModeToggle()}
+        {createMode === "link" ? renderLinkForm() : renderNewEpicForm()}
       </div>
 
       {/* Step 2: Edit Plan */}

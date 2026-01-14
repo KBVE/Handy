@@ -138,7 +138,16 @@ pub fn spawn_agent(config: &SpawnConfig, repo_path: &str) -> Result<SpawnResult,
     };
     tmux::create_session(&session_name, Some(&worktree.path), &metadata)?;
 
-    // 6. Add agent metadata comment to the issue
+    // 6. Start the agent in the tmux session
+    tmux::start_agent_in_session(
+        &session_name,
+        &config.agent_type,
+        &config.repo,
+        config.issue_number,
+        Some(&issue.title),
+    )?;
+
+    // 7. Add agent metadata comment to the issue
     let issue_metadata = IssueAgentMetadata {
         session: session_name.clone(),
         machine_id: machine_id.clone(),
@@ -149,7 +158,7 @@ pub fn spawn_agent(config: &SpawnConfig, repo_path: &str) -> Result<SpawnResult,
     };
     github::add_agent_metadata_comment(&config.repo, config.issue_number, &issue_metadata)?;
 
-    // 7. Add working labels to the issue
+    // 8. Add working labels to the issue
     if !config.working_labels.is_empty() {
         let labels_refs: Vec<&str> = config.working_labels.iter().map(|s| s.as_str()).collect();
         github::update_labels(&config.repo, config.issue_number, labels_refs, vec![])?;

@@ -134,6 +134,26 @@ pub async fn spawn_agent_from_issue(config: SpawnAgentConfig) -> Result<AgentSpa
     .map_err(|e| format!("Task join error: {}", e))?
     .map_err(|e| format!("Failed to create tmux session: {}", e))?;
 
+    // Start the agent in the tmux session (blocking operation)
+    let issue_title_for_agent = issue.title.clone();
+    tokio::task::spawn_blocking({
+        let session_name = session_name.clone();
+        let agent_type = agent_type.clone();
+        let repo = repo.clone();
+        move || {
+            tmux::start_agent_in_session(
+                &session_name,
+                &agent_type,
+                &repo,
+                issue_number as u64,
+                Some(&issue_title_for_agent),
+            )
+        }
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+    .map_err(|e| format!("Failed to start agent in session: {}", e))?;
+
     // Post metadata comment to GitHub
     let comment_body = format_agent_metadata_comment(&metadata, &issue.title, epic_ref.as_deref());
     github::add_issue_comment_async(&repo, issue_number, &comment_body)

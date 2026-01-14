@@ -1404,6 +1404,13 @@ async getGitDefaultBranch(repoPath: string) : Promise<Result<string, string>> {
 }
 },
 /**
+ * Suggest local paths for a GitHub repository.
+ * Searches common locations for cloned repos matching the given owner/repo format.
+ */
+async suggestLocalRepoPath(githubRepo: string) : Promise<string[]> {
+    return await TAURI_INVOKE("suggest_local_repo_path", { githubRepo });
+},
+/**
  * Check GitHub CLI authentication status.
  */
 async checkGhAuth() : Promise<GhAuthStatus> {
@@ -1778,6 +1785,55 @@ async planEpicFromMarkdown(config: PlanFromMarkdownConfig) : Promise<Result<Plan
 async listEpicPlanTemplates() : Promise<Result<PlanTemplate[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("list_epic_plan_templates") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Start orchestration for an epic - creates sub-issues and optionally spawns agents
+ */
+async startEpicOrchestration(epic: EpicInfo, config: StartOrchestrationConfig) : Promise<Result<OrchestrationResult, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("start_epic_orchestration", { epic, config }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Get status of all phases in an epic
+ */
+async getEpicPhaseStatus(epicNumber: number, epicRepo: string, phases: PhaseConfig[]) : Promise<Result<PhaseStatus[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_epic_phase_status", { epicNumber, epicRepo, phases }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Load an existing epic from GitHub by issue number
+ * 
+ * Parses the epic's body to extract phases and metadata for orchestration.
+ */
+async loadEpic(repo: string, epicNumber: number) : Promise<Result<EpicInfo, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("load_epic", { repo, epicNumber }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Load an existing epic with full recovery information
+ * 
+ * Fetches the epic, all its sub-issues, and determines what work remains.
+ * Useful for recovering/continuing orchestration on an existing epic.
+ */
+async loadEpicForRecovery(repo: string, epicNumber: number) : Promise<Result<EpicRecoveryInfo, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("load_epic_for_recovery", { repo, epicNumber }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -2164,6 +2220,66 @@ percentage: number;
  */
 remaining: number }
 /**
+ * Recovery information for an epic
+ */
+export type EpicRecoveryInfo = { 
+/**
+ * The epic info
+ */
+epic: EpicInfo; 
+/**
+ * Existing sub-issues for this epic
+ */
+sub_issues: ExistingSubIssue[]; 
+/**
+ * Progress statistics
+ */
+progress: EpicProgress; 
+/**
+ * Phases that have no sub-issues yet
+ */
+phases_without_issues: number[]; 
+/**
+ * Sub-issues that are ready for agents (have todo label, not closed)
+ */
+ready_for_agents: ExistingSubIssue[]; 
+/**
+ * Sub-issues that have agents actively working
+ */
+in_progress: ExistingSubIssue[] }
+/**
+ * Information about an existing sub-issue linked to an epic
+ */
+export type ExistingSubIssue = { 
+/**
+ * Issue number
+ */
+issue_number: number; 
+/**
+ * Issue title
+ */
+title: string; 
+/**
+ * Phase number (extracted from labels)
+ */
+phase: number | null; 
+/**
+ * Current state (open/closed)
+ */
+state: string; 
+/**
+ * Labels on the issue
+ */
+labels: string[]; 
+/**
+ * URL to the issue
+ */
+url: string; 
+/**
+ * Whether an agent is currently working on it
+ */
+has_agent_working: boolean }
+/**
  * Output mode for filler word detection
  */
 export type FillerOutputMode = 
@@ -2414,6 +2530,30 @@ voice_name: string | null }
  * Type of Onichan model
  */
 export type OnichanModelType = "Llm" | "Tts"
+/**
+ * Result of starting orchestration for an epic
+ */
+export type OrchestrationResult = { 
+/**
+ * Epic number
+ */
+epic_number: number; 
+/**
+ * Created sub-issues
+ */
+sub_issues: SubIssueInfo[]; 
+/**
+ * Spawned agents (for agent-assisted phases)
+ */
+spawned_agents: SpawnedAgentInfo[]; 
+/**
+ * Phases that were started
+ */
+started_phases: number[]; 
+/**
+ * Any warnings during orchestration
+ */
+warnings: string[] }
 export type OverlayPosition = "none" | "top" | "bottom"
 export type PasteMethod = "ctrl_v" | "direct" | "none" | "shift_insert" | "ctrl_shift_v"
 /**
@@ -2431,7 +2571,23 @@ description: string;
 /**
  * Approach: "manual", "agent-assisted", or "automated"
  */
-approach: string }
+approach: string; 
+/**
+ * Key tasks for this phase (each becomes a sub-issue)
+ */
+tasks?: string[]; 
+/**
+ * Files to modify (optional context for agents)
+ */
+files?: string[]; 
+/**
+ * Dependencies - names of phases that must complete first
+ */
+dependencies?: string[] }
+/**
+ * Get phase status for an epic (how many sub-issues complete per phase)
+ */
+export type PhaseStatus = { phase_number: number; phase_name: string; approach: string; total_issues: number; completed_issues: number; in_progress_issues: number; status: string }
 /**
  * Configuration for planning an Epic from a markdown file
  */
@@ -2674,6 +2830,48 @@ session_name: string;
  * Machine ID where agent is running
  */
 machine_id: string }
+/**
+ * Information about a spawned agent
+ */
+export type SpawnedAgentInfo = { 
+/**
+ * Issue number the agent is working on
+ */
+issue_number: number; 
+/**
+ * Session name (tmux)
+ */
+session_name: string; 
+/**
+ * Worktree path
+ */
+worktree_path: string; 
+/**
+ * Agent type (claude, aider, etc.)
+ */
+agent_type: string }
+/**
+ * Configuration for starting orchestration
+ */
+export type StartOrchestrationConfig = { 
+/**
+ * Which phases to start (1-indexed). If empty, starts Phase 1.
+ */
+phases: number[]; 
+/**
+ * Whether to auto-spawn agents for agent-assisted phases
+ */
+auto_spawn_agents: boolean; 
+/**
+ * Default agent type for spawning
+ */
+default_agent_type: string; 
+/**
+ * Local filesystem path to git repository for creating worktrees.
+ * Must be a valid git repository path (e.g., "/Users/me/projects/MyRepo").
+ * If empty or invalid, agent spawning will be skipped but issues will still be created.
+ */
+worktree_base: string }
 /**
  * Configuration for creating a sub-issue
  */

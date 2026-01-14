@@ -25,6 +25,8 @@ import {
   ArrowUp,
   ArrowDown,
   Delete,
+  RotateCcw,
+  AlertTriangle,
 } from "lucide-react";
 
 const SUPPORT_SESSION_NAME = "handy-agent-support-worker";
@@ -34,6 +36,8 @@ interface SessionCardProps {
   onKill: (name: string) => void;
   isKilling: boolean;
   onExpand: () => void;
+  onRestart: (name: string) => void;
+  isRestarting: boolean;
 }
 
 const SessionCard: React.FC<SessionCardProps> = ({
@@ -41,6 +45,8 @@ const SessionCard: React.FC<SessionCardProps> = ({
   onKill,
   isKilling,
   onExpand,
+  onRestart,
+  isRestarting,
 }) => {
   const { t } = useTranslation();
   const [output, setOutput] = useState<string>("");
@@ -200,6 +206,22 @@ const SessionCard: React.FC<SessionCardProps> = ({
           <ExternalLink className="w-3 h-3" />
           {t("devops.sessions.openTerminal")}
         </button>
+        {/* Show restart button for stopped sessions with issue metadata */}
+        {session.status === "Stopped" && session.metadata?.issue_ref && (
+          <button
+            onClick={() => onRestart(session.name)}
+            disabled={isRestarting}
+            className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 transition-colors disabled:opacity-50"
+            title={t("devops.sessions.restartAgent", "Restart the agent in this session")}
+          >
+            {isRestarting ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <RotateCcw className="w-3 h-3" />
+            )}
+            {t("devops.sessions.restart", "Restart")}
+          </button>
+        )}
         <button
           onClick={() => onKill(session.name)}
           disabled={isKilling}
@@ -222,6 +244,8 @@ interface ExpandedSessionViewProps {
   onClose: () => void;
   onKill: (name: string) => void;
   isKilling: boolean;
+  onRestart: (name: string) => void;
+  isRestarting: boolean;
 }
 
 const ExpandedSessionView: React.FC<ExpandedSessionViewProps> = ({
@@ -229,6 +253,8 @@ const ExpandedSessionView: React.FC<ExpandedSessionViewProps> = ({
   onClose,
   onKill,
   isKilling,
+  onRestart,
+  isRestarting,
 }) => {
   const { t } = useTranslation();
   const [output, setOutput] = useState<string>("");
@@ -564,6 +590,23 @@ const ExpandedSessionView: React.FC<ExpandedSessionViewProps> = ({
               <ExternalLink className="w-4 h-4" />
               {t("devops.sessions.openTerminal")}
             </button>
+            {/* Show restart button for stopped sessions with issue metadata */}
+            {session.status === "Stopped" && session.metadata?.issue_ref && (
+              <button
+                onClick={() => onRestart(session.name)}
+                disabled={isRestarting}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 transition-colors disabled:opacity-50"
+                type="button"
+                title={t("devops.sessions.restartAgent", "Restart the agent in this session")}
+              >
+                {isRestarting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <RotateCcw className="w-4 h-4" />
+                )}
+                {t("devops.sessions.restart", "Restart")}
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -600,6 +643,7 @@ export const TmuxSessionsGrid: React.FC = () => {
     null,
   );
   const [isStartingSupportWorker, setIsStartingSupportWorker] = useState(false);
+  const [restartingSession, setRestartingSession] = useState<string | null>(null);
 
   const sessions = useDevOpsStore((state) => state.sessions);
   const isLoading = useDevOpsStore((state) => state.sessionsLoading);
@@ -609,6 +653,73 @@ export const TmuxSessionsGrid: React.FC = () => {
 
   const refreshSessions = useDevOpsStore((state) => state.refreshSessions);
   const killSession = useDevOpsStore((state) => state.killSession);
+
+  // Count stopped sessions that can be restarted
+  const stoppedSessions = sessions.filter(
+    (s) => s.status === "Stopped" && s.metadata?.issue_ref
+  );
+
+  // Handler for restarting an agent in a session
+  const handleRestartAgent = async (sessionName: string) => {
+    setRestartingSession(sessionName);
+    try {
+      const result = await commands.restartAgentInSession(sessionName);
+      if (result.status === "ok") {
+        toast.success(
+          t("devops.sessions.restartSuccess", "Agent Restarted"),
+          t("devops.sessions.restartSuccessMessage", "The agent has been restarted in session {{session}}", { session: sessionName })
+        );
+        // Refresh to update status
+        await refreshSessions(false);
+      } else {
+        toast.error(
+          t("devops.sessions.restartError", "Failed to Restart"),
+          result.error
+        );
+      }
+    } catch (err) {
+      toast.error(
+        t("devops.sessions.restartError", "Failed to Restart"),
+        err instanceof Error ? err.message : String(err)
+      );
+    } finally {
+      setRestartingSession(null);
+    }
+  };
+
+  // Handler for recovering all stopped sessions
+  const handleRecoverAll = async () => {
+    try {
+      const result = await commands.recoverAllAgentSessions(true, false);
+      if (result.status === "ok") {
+        const succeeded = result.data.filter((r) => r.success).length;
+        const failed = result.data.filter((r) => !r.success).length;
+        if (succeeded > 0) {
+          toast.success(
+            t("devops.sessions.recoverySuccess", "Recovery Complete"),
+            t("devops.sessions.recoverySuccessMessage", "Restarted {{count}} agent(s)", { count: succeeded })
+          );
+        }
+        if (failed > 0) {
+          toast.warning(
+            t("devops.sessions.recoveryPartial", "Some Failed"),
+            t("devops.sessions.recoveryPartialMessage", "{{count}} agent(s) could not be restarted", { count: failed })
+          );
+        }
+        await refreshSessions(false);
+      } else {
+        toast.error(
+          t("devops.sessions.recoveryError", "Recovery Failed"),
+          result.error
+        );
+      }
+    } catch (err) {
+      toast.error(
+        t("devops.sessions.recoveryError", "Recovery Failed"),
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  };
 
   // Check if support worker is running
   const supportWorkerSession = sessions.find(
@@ -737,6 +848,33 @@ export const TmuxSessionsGrid: React.FC = () => {
   return (
     <>
       <div className="space-y-4">
+        {/* Recovery banner for stopped sessions */}
+        {stoppedSessions.length > 0 && (
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+            <AlertTriangle className="w-5 h-5 text-yellow-400 shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm text-yellow-400 font-medium">
+                {t("devops.sessions.stoppedAgents", "{{count}} stopped agent(s) detected", { count: stoppedSessions.length })}
+              </p>
+              <p className="text-xs text-yellow-400/70">
+                {t("devops.sessions.stoppedAgentsHint", "These sessions have agents that stopped. You can restart them to continue work.")}
+              </p>
+            </div>
+            <button
+              onClick={handleRecoverAll}
+              disabled={restartingSession !== null}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 transition-colors disabled:opacity-50"
+            >
+              {restartingSession !== null ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RotateCcw className="w-4 h-4" />
+              )}
+              {t("devops.sessions.restartAll", "Restart All")}
+            </button>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -784,6 +922,8 @@ export const TmuxSessionsGrid: React.FC = () => {
               onKill={killSession}
               isKilling={killingSession === session.name}
               onExpand={() => setExpandedSessionName(session.name)}
+              onRestart={handleRestartAgent}
+              isRestarting={restartingSession === session.name}
             />
           ))}
         </div>
@@ -800,6 +940,8 @@ export const TmuxSessionsGrid: React.FC = () => {
             setExpandedSessionName(null);
           }}
           isKilling={killingSession === expandedSessionName}
+          onRestart={handleRestartAgent}
+          isRestarting={restartingSession === expandedSessionName}
         />
       )}
     </>

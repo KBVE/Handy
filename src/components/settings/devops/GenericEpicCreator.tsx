@@ -117,11 +117,21 @@ export function GenericEpicCreator() {
     const loadTemplates = async () => {
       try {
         setTemplatesLoading(true);
-        console.log("Loading templates from filesystem...");
         const loadedTemplates = await invoke<PlanTemplate[]>("list_epic_plan_templates");
-        console.log("Loaded templates:", loadedTemplates);
         setTemplates(loadedTemplates);
         setTemplatesError(null);
+
+        // Apply repos from first template if it has them (templates are sorted by title)
+        if (loadedTemplates.length > 0) {
+          const firstTemplate = loadedTemplates[0];
+          setSelectedTemplate(firstTemplate.id);
+          if (firstTemplate.tracking_repo) {
+            setRepo(firstTemplate.tracking_repo);
+          }
+          if (firstTemplate.working_repo) {
+            setWorkRepo(firstTemplate.working_repo);
+          }
+        }
       } catch (err) {
         console.error("Failed to load templates:", err);
         setTemplatesError(err as string);
@@ -180,6 +190,21 @@ export function GenericEpicCreator() {
     }
     if (template.working_repo) {
       setWorkRepo(template.working_repo);
+    }
+  };
+
+  // Update repos when template selection changes in the dropdown
+  const handleTemplateChange = (templateId: string) => {
+    setSelectedTemplate(templateId);
+    const template = templates.find((t) => t.id === templateId);
+    if (template) {
+      // Update repo fields immediately when template changes
+      if (template.tracking_repo) {
+        setRepo(template.tracking_repo);
+      }
+      if (template.working_repo) {
+        setWorkRepo(template.working_repo);
+      }
     }
   };
 
@@ -329,7 +354,7 @@ export function GenericEpicCreator() {
             </label>
             <select
               value={selectedTemplate}
-              onChange={(e) => setSelectedTemplate(e.target.value)}
+              onChange={(e) => handleTemplateChange(e.target.value)}
               className="w-full px-3 py-2 bg-mid-gray/10 border border-mid-gray/20 rounded text-sm text-white focus:outline-none focus:border-blue-500"
               disabled={templatesLoading}
             >

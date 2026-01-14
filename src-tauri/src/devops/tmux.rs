@@ -597,16 +597,18 @@ pub fn build_agent_command(
     let command = match agent_type.to_lowercase().as_str() {
         "claude" => {
             // Claude Code CLI with GitHub issue context
-            // Uses --issue flag if available, otherwise passes as prompt
+            // Note: We intentionally do NOT use --dangerously-skip-permissions
+            // The agent should still require user approval for sensitive operations
             format!(
-                "claude --dangerously-skip-permissions 'Work on GitHub issue {}#{}: Implement the requirements described in the issue. When done, commit your changes and create a PR.'",
+                "claude 'Work on GitHub issue {}#{}: Implement the requirements described in the issue. When done, commit your changes and create a PR.'",
                 repo, issue_number
             )
         }
         "aider" => {
             // Aider with issue context in the prompt
+            // Note: --yes-always auto-confirms prompts - consider if this is desired
             format!(
-                "aider --yes-always --message 'Work on GitHub issue {}#{}{}. Implement the requirements and commit when done.'",
+                "aider --message 'Work on GitHub issue {}#{}{}. Implement the requirements and commit when done.'",
                 repo, issue_number, title_arg
             )
         }

@@ -2498,6 +2498,14 @@ description: string;
  */
 labels: string[]; 
 /**
+ * Repository for tracking issues (e.g., "KBVE/KBVE")
+ */
+tracking_repo: string | null; 
+/**
+ * Repository for working/implementation (e.g., "KBVE/Handy")
+ */
+working_repo: string | null; 
+/**
  * Epic goal extracted from markdown
  */
 goal: string; 

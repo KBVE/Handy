@@ -21,6 +21,12 @@ struct PlanFrontmatter {
     description: String,
     #[serde(default)]
     labels: Vec<String>,
+    /// Repository for tracking issues (e.g., "KBVE/KBVE")
+    #[serde(default)]
+    tracking_repo: Option<String>,
+    /// Repository for working/implementation (e.g., "KBVE/Handy")
+    #[serde(default)]
+    working_repo: Option<String>,
 }
 
 /// Parsed plan template ready for use
@@ -34,6 +40,10 @@ pub struct PlanTemplate {
     pub description: String,
     /// Labels from frontmatter
     pub labels: Vec<String>,
+    /// Repository for tracking issues (e.g., "KBVE/KBVE")
+    pub tracking_repo: Option<String>,
+    /// Repository for working/implementation (e.g., "KBVE/Handy")
+    pub working_repo: Option<String>,
     /// Epic goal extracted from markdown
     pub goal: String,
     /// Success metrics extracted from markdown
@@ -117,6 +127,8 @@ fn parse_plan_template(path: &Path) -> Result<PlanTemplate, String> {
         title: frontmatter.title,
         description: frontmatter.description,
         labels: frontmatter.labels,
+        tracking_repo: frontmatter.tracking_repo,
+        working_repo: frontmatter.working_repo,
         goal,
         success_metrics,
         phases,
@@ -285,11 +297,24 @@ fn extract_phases(markdown: &str) -> Result<Vec<PhaseConfig>, String> {
 }
 
 /// Convert a plan template to EpicConfig
+///
+/// Uses template's tracking_repo and working_repo if specified,
+/// otherwise falls back to provided defaults.
 pub fn template_to_config(
     template: &PlanTemplate,
-    repo: String,
-    work_repo: Option<String>,
+    default_repo: String,
+    default_work_repo: Option<String>,
 ) -> EpicConfig {
+    // Use template repos if specified, otherwise use defaults
+    let repo = template
+        .tracking_repo
+        .clone()
+        .unwrap_or(default_repo);
+    let work_repo = template
+        .working_repo
+        .clone()
+        .or(default_work_repo);
+
     EpicConfig {
         title: template.title.clone(),
         repo,

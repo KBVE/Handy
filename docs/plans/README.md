@@ -16,8 +16,14 @@ Each plan template is a markdown file with:
 title: "Epic Title"                    # Required: Epic title
 description: "Brief description"       # Optional: Shown in template preview
 labels: ["label1", "label2"]          # Optional: GitHub labels to apply
+tracking_repo: "KBVE/KBVE"            # Optional: Repo for issue tracking
+working_repo: "KBVE/Handy"            # Optional: Repo for implementation
 ---
 ```
+
+**Repository Fields:**
+- `tracking_repo`: Where Epic issues are created (defaults to current repo if not specified)
+- `working_repo`: Where code implementation happens (can be same as tracking_repo)
 
 ## Body Structure
 

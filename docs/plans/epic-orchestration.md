@@ -1,22 +1,125 @@
 ---
-title: "Epic: Agent Orchestration Tab"
-tracking_repo: KBVE/KBVE
-working_repo: KBVE/Handy
-labels:
-  - epic
-  - devops
-  - orchestration
+title: "Agent Orchestration Tab"
+description: "Add a unified pipeline view for Issue → Agent → PR workflow as a third DevOps tab"
+labels: ["epic", "devops", "orchestration"]
+tracking_repo: "KBVE/KBVE"
+working_repo: "KBVE/Handy"
 ---
 
-# Epic: Agent Orchestration Tab
+# Agent Orchestration Tab
 
-## Overview
+## Goal
 
-Add a third tab to DevOps Settings called "Orchestration" that provides a unified pipeline view of the Issue → Agent → PR workflow. This tab will serve as the central command center for managing automated development work.
+Add a third tab to DevOps Settings called "Orchestration" that provides a unified pipeline view of the Issue → Agent → PR workflow, serving as the central command center for managing automated development work.
 
-## User Story
+## Success Metrics
 
-As a developer using Handy's DevOps features, I want to see the complete pipeline of work flowing through the system—from queued issues, to actively working agents, to completed PRs—so I can monitor progress and manage the automation workflow effectively.
+- Pipeline visibility: Can see all active work at a glance
+- Issue assignment: Can assign agents to issues from one place
+- PR traceability: Every PR links back to its originating issue
+- Reduced context switching between tabs
+- Successful dogfooding: Use this Epic to test the DevOps ecosystem
+
+## Phases
+
+### Phase 1: Core Infrastructure
+
+**Approach**: manual
+
+Build backend infrastructure for pipeline state tracking and issue assignment flow.
+
+**Key Tasks**:
+- Create `PipelineItem` struct linking issue → session → worktree → PR
+- Add `list_pipeline_items` command to aggregate current state
+- Add `get_pipeline_history` command for completed items
+- Store pipeline state in persistent storage
+- Add `assign_issue_to_agent` command (creates worktree, spawns tmux session)
+- Add `skip_issue` command (removes agent-todo label, adds agent-skipped)
+- Detect when agent creates a PR and auto-link to pipeline item
+- Track PR status (draft, ready, needs-review, approved, merged)
+
+**Files**:
+- `src-tauri/src/devops/pipeline.rs` (new)
+- `src-tauri/src/devops/orchestration.rs` (new)
+- `src-tauri/src/commands/devops.rs` (add commands)
+
+**Dependencies**: None
+
+---
+
+### Phase 2: Frontend - Orchestration Tab
+
+**Approach**: agent-assisted
+
+Build the Orchestration tab UI with three sections: Active Pipeline, Queued Issues, and Completed Work.
+
+**Key Tasks**:
+- Add "Orchestration" tab to DevOpsLayout
+- Create OrchestrationTab component
+- Create ActivePipeline component with flow visualization (Issue → Session → PR)
+- Show agent type, duration, and status
+- Add action buttons (View Session, Cancel, Complete)
+- Create QueuedIssues component with agent selection dropdown
+- Add Assign and Skip buttons for issues
+- Create CompletedWork component showing merged PRs with linked issues
+
+**Files**:
+- `src/components/settings/devops/DevOpsLayout.tsx`
+- `src/components/settings/devops/OrchestrationTab.tsx` (new)
+- `src/components/settings/devops/orchestration/ActivePipeline.tsx` (new)
+- `src/components/settings/devops/orchestration/PipelineCard.tsx` (new)
+- `src/components/settings/devops/orchestration/QueuedIssues.tsx` (new)
+- `src/components/settings/devops/orchestration/IssueCard.tsx` (new)
+- `src/components/settings/devops/orchestration/CompletedWork.tsx` (new)
+
+**Dependencies**: Phase 1 complete
+
+---
+
+### Phase 3: Store Integration
+
+**Approach**: agent-assisted
+
+Create Zustand store for pipeline state management and integrate with existing DevOps store.
+
+**Key Tasks**:
+- Create pipelineStore.ts with Zustand
+- Track active pipeline items
+- Track queued issues
+- Track completed history
+- Implement polling for updates (or event-driven)
+- Integrate pipeline state with existing devopsStore
+- Ensure sessions and pipeline stay in sync
+
+**Files**:
+- `src/stores/pipelineStore.ts` (new)
+- `src/stores/devopsStore.ts` (update)
+
+**Dependencies**: Phase 2 complete
+
+---
+
+### Phase 4: Polish & Integration
+
+**Approach**: agent-assisted
+
+Add real-time updates, error handling, and translations.
+
+**Key Tasks**:
+- Add Tauri events for pipeline state changes
+- Update UI reactively when state changes
+- Handle agent failures gracefully
+- Allow retry/reassign on failure
+- Show error state in pipeline card
+- Add all i18n keys for Orchestration tab
+- Update translation.json for en/es/fr/vi
+
+**Files**:
+- `src/i18n/locales/*/translation.json`
+
+**Dependencies**: Phase 3 complete
+
+---
 
 ## Design
 
@@ -30,7 +133,7 @@ DevOps → [Settings] [Sessions] [Orchestration]
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│  🔄 Active Pipeline                                                 │
+│  Active Pipeline                                                    │
 ├─────────────────────────────────────────────────────────────────────┤
 │  ┌──────────────────┐    ┌──────────────────┐    ┌────────────────┐ │
 │  │ #42 Add dark mode│ →  │ claude-42        │ →  │ PR #87         │ │
@@ -42,123 +145,18 @@ DevOps → [Settings] [Sessions] [Orchestration]
 │  │ [aider] working  │    │ 8m active        │                       │
 │  └──────────────────┘    └──────────────────┘                       │
 ├─────────────────────────────────────────────────────────────────────┤
-│  📋 Queued Issues (agent-todo label)                                │
+│  Queued Issues (agent-todo label)                                   │
 ├─────────────────────────────────────────────────────────────────────┤
 │  #44 Update README        │ enhancement │ [Assign ▼] [Skip]        │
 │  #45 Add unit tests       │ testing     │ [Assign ▼] [Skip]        │
 │  #46 Refactor settings    │ refactor    │ [Assign ▼] [Skip]        │
 ├─────────────────────────────────────────────────────────────────────┤
-│  ✅ Recently Completed                                              │
+│  Recently Completed                                                 │
 ├─────────────────────────────────────────────────────────────────────┤
 │  #40 Fix typos        → PR #85 merged 2h ago                        │
 │  #39 Add logging      → PR #84 merged 1d ago                        │
 └─────────────────────────────────────────────────────────────────────┘
 ```
-
-## Implementation Tasks
-
-### Phase 1: Core Infrastructure
-
-#### 1.1 Backend - Pipeline State Tracking
-- [ ] Create `PipelineItem` struct linking issue → session → worktree → PR
-- [ ] Add `list_pipeline_items` command to aggregate current state
-- [ ] Add `get_pipeline_history` command for completed items
-- [ ] Store pipeline state in persistent storage (not just in-memory)
-
-**Files:**
-- `src-tauri/src/devops/pipeline.rs` (new)
-- `src-tauri/src/commands/devops.rs` (add commands)
-- `src-tauri/src/bindings.rs` (types)
-
-#### 1.2 Backend - Issue Assignment Flow
-- [ ] Add `assign_issue_to_agent` command
-  - Creates worktree from issue branch
-  - Spawns tmux session with selected agent
-  - Links everything in pipeline state
-- [ ] Add `skip_issue` command (removes agent-todo label, adds agent-skipped)
-- [ ] Add `get_queued_issues` command (issues with agent-todo label)
-
-**Files:**
-- `src-tauri/src/devops/orchestration.rs` (new)
-- `src-tauri/src/commands/devops.rs`
-
-#### 1.3 Backend - PR Linking
-- [ ] Detect when agent creates a PR (monitor `gh pr list` for branch)
-- [ ] Auto-link PR to pipeline item
-- [ ] Track PR status (draft, ready, needs-review, approved, merged)
-
-### Phase 2: Frontend - Orchestration Tab
-
-#### 2.1 Tab Navigation
-- [ ] Add "Orchestration" tab to DevOpsLayout
-- [ ] Create OrchestrationTab component
-
-**Files:**
-- `src/components/settings/devops/DevOpsLayout.tsx`
-- `src/components/settings/devops/OrchestrationTab.tsx` (new)
-
-#### 2.2 Active Pipeline Section
-- [ ] Create ActivePipeline component showing current work
-- [ ] Display flow visualization (Issue → Session → PR)
-- [ ] Show agent type, duration, and status
-- [ ] Add action buttons (View Session, Cancel, Complete)
-
-**Files:**
-- `src/components/settings/devops/orchestration/ActivePipeline.tsx` (new)
-- `src/components/settings/devops/orchestration/PipelineCard.tsx` (new)
-
-#### 2.3 Queued Issues Section
-- [ ] Create QueuedIssues component
-- [ ] Fetch issues with `agent-todo` label
-- [ ] Agent selection dropdown (claude, aider, gemini, etc.)
-- [ ] Assign button to start work
-- [ ] Skip button to defer issue
-
-**Files:**
-- `src/components/settings/devops/orchestration/QueuedIssues.tsx` (new)
-- `src/components/settings/devops/orchestration/IssueCard.tsx` (new)
-
-#### 2.4 Completed Section
-- [ ] Create CompletedWork component
-- [ ] Show recently merged PRs with linked issues
-- [ ] Display merge time and PR link
-
-**Files:**
-- `src/components/settings/devops/orchestration/CompletedWork.tsx` (new)
-
-### Phase 3: Store Integration
-
-#### 3.1 Pipeline Store
-- [ ] Create pipelineStore.ts with Zustand
-- [ ] Track active pipeline items
-- [ ] Track queued issues
-- [ ] Track completed history
-- [ ] Polling for updates (or event-driven)
-
-**Files:**
-- `src/stores/pipelineStore.ts` (new)
-
-#### 3.2 DevOps Store Updates
-- [ ] Integrate pipeline state with existing store
-- [ ] Ensure sessions and pipeline stay in sync
-
-### Phase 4: Polish & Integration
-
-#### 4.1 Real-time Updates
-- [ ] Add Tauri events for pipeline state changes
-- [ ] Update UI reactively when state changes
-
-#### 4.2 Error Handling
-- [ ] Handle agent failures gracefully
-- [ ] Allow retry/reassign on failure
-- [ ] Show error state in pipeline card
-
-#### 4.3 Translations
-- [ ] Add all i18n keys for Orchestration tab
-- [ ] Update translation.json for en/es/fr/vi
-
-**Files:**
-- `src/i18n/locales/*/translation.json`
 
 ## Technical Details
 
@@ -230,12 +228,12 @@ pub struct PipelineItem {
 ## Dependencies
 
 This feature builds on existing infrastructure:
-- ✅ GitHub CLI integration (`gh` commands)
-- ✅ Tmux session management
-- ✅ Git worktree management
-- ✅ Agent spawning (claude, aider, gemini, etc.)
-- ✅ Issue queue component (can reference patterns)
-- ✅ Session grid component (can reference patterns)
+- GitHub CLI integration (`gh` commands)
+- Tmux session management
+- Git worktree management
+- Agent spawning (claude, aider, gemini, etc.)
+- Issue queue component (can reference patterns)
+- Session grid component (can reference patterns)
 
 ## Testing Strategy
 
@@ -252,26 +250,13 @@ This Epic itself can be used to test the DevOps ecosystem:
 
 ### Manual Testing Checklist
 
-- [ ] Assign issue to Claude agent
-- [ ] Verify worktree and session created
-- [ ] Agent completes work and creates PR
-- [ ] PR appears linked in pipeline
-- [ ] Merge PR and verify completed state
-- [ ] Skip an issue and verify label changes
-- [ ] Cancel active work and verify cleanup
-
-## Success Metrics
-
-1. **Visibility**: Can see all active work at a glance
-2. **Control**: Can assign, skip, and cancel from one place
-3. **Traceability**: Every PR links back to its originating issue
-4. **Efficiency**: Reduced context switching between tabs
-
-## Estimated Scope
-
-- **Backend**: 4-5 new files, ~500-700 lines Rust
-- **Frontend**: 6-8 new components, ~800-1000 lines TypeScript
-- **Integration**: Updates to 3-4 existing files
+- Assign issue to Claude agent
+- Verify worktree and session created
+- Agent completes work and creates PR
+- PR appears linked in pipeline
+- Merge PR and verify completed state
+- Skip an issue and verify label changes
+- Cancel active work and verify cleanup
 
 ## Notes
 

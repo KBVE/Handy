@@ -511,15 +511,15 @@ pub fn get_issue_with_agent(repo: &str, number: u64) -> Result<IssueWithAgent, S
 }
 
 /// Update issue labels.
+/// Labels that don't exist in the repo are silently skipped.
 pub fn update_labels(
     repo: &str,
     number: u64,
     add: Vec<&str>,
     remove: Vec<&str>,
 ) -> Result<(), String> {
-    // Add labels
-    if !add.is_empty() {
-        let add_str = add.join(",");
+    // Add labels one at a time, skipping any that don't exist
+    for label in &add {
         let output = Command::new("gh")
             .args([
                 "issue",
@@ -528,22 +528,27 @@ pub fn update_labels(
                 "--repo",
                 repo,
                 "--add-label",
-                &add_str,
+                label,
             ])
             .output()
             .map_err(|e| format!("Failed to execute gh: {}", e))?;
 
         if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            // Skip labels that don't exist in the repo
+            if stderr.contains("not found") {
+                eprintln!("Warning: label '{}' not found in repo, skipping", label);
+                continue;
+            }
             return Err(format!(
-                "gh issue edit (add labels) failed: {}",
-                String::from_utf8_lossy(&output.stderr)
+                "gh issue edit (add label '{}') failed: {}",
+                label, stderr
             ));
         }
     }
 
-    // Remove labels
-    if !remove.is_empty() {
-        let remove_str = remove.join(",");
+    // Remove labels one at a time, skipping any that don't exist
+    for label in &remove {
         let output = Command::new("gh")
             .args([
                 "issue",
@@ -552,15 +557,21 @@ pub fn update_labels(
                 "--repo",
                 repo,
                 "--remove-label",
-                &remove_str,
+                label,
             ])
             .output()
             .map_err(|e| format!("Failed to execute gh: {}", e))?;
 
         if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            // Skip labels that don't exist in the repo
+            if stderr.contains("not found") {
+                eprintln!("Warning: label '{}' not found in repo, skipping", label);
+                continue;
+            }
             return Err(format!(
-                "gh issue edit (remove labels) failed: {}",
-                String::from_utf8_lossy(&output.stderr)
+                "gh issue edit (remove label '{}') failed: {}",
+                label, stderr
             ));
         }
     }

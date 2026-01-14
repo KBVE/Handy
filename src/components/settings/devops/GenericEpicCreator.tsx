@@ -331,10 +331,64 @@ export function GenericEpicCreator() {
     setError(null);
   };
 
-  // Step 1: Template Selection
-  if (currentStep === "template" && !result) {
+  // Success State - render first so we can return early
+  if (result) {
     return (
-      <div className="space-y-4">
+      <div className="p-4 bg-green-500/10 border border-green-500/20 rounded space-y-3">
+        <div className="flex items-center gap-2">
+          <span className="text-green-400 text-lg">✓</span>
+          <span className="text-sm font-medium text-white">
+            Epic Created Successfully!
+          </span>
+        </div>
+        <div className="space-y-1 text-xs text-gray-300">
+          <div>
+            <span className="text-gray-400">Epic Number:</span>{" "}
+            <span className="font-mono text-white">#{result.epic_number}</span>
+          </div>
+          <div>
+            <span className="text-gray-400">Repository:</span>{" "}
+            <span className="font-mono text-white">{result.repo}</span>
+          </div>
+          <div>
+            <span className="text-gray-400">Phases:</span>{" "}
+            <span className="text-white">{result.phases.length}</span>
+          </div>
+          <div>
+            <a
+              href={result.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300 underline"
+            >
+              View on GitHub →
+            </a>
+          </div>
+        </div>
+        <div className="mt-3 pt-3 border-t border-green-500/20 text-xs text-gray-400">
+          <strong>Next steps:</strong>
+          <ol className="mt-1 ml-4 list-decimal space-y-1">
+            <li>Create sub-issues for each phase</li>
+            <li>Implement manual phases</li>
+            <li>Spawn agents for agent-assisted phases</li>
+          </ol>
+        </div>
+        <button
+          onClick={resetForm}
+          className="w-full mt-3 px-4 py-2 bg-mid-gray/20 hover:bg-mid-gray/30 text-white text-sm rounded transition-colors"
+        >
+          Create Another Epic
+        </button>
+      </div>
+    );
+  }
+
+  // Main wizard - use single container with hidden sections to avoid DOM unmounting issues
+  // This prevents OverlayScrollbars from breaking when steps change
+  return (
+    <div className="space-y-4">
+      {/* Step 1: Template Selection */}
+      <div className={currentStep === "template" ? "" : "hidden"}>
         <div className="space-y-3">
           {templatesLoading && (
             <div className="text-xs text-gray-400 py-2">
@@ -423,18 +477,14 @@ export function GenericEpicCreator() {
         <button
           onClick={handleTemplateSelect}
           disabled={!repo.trim()}
-          className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm rounded transition-colors font-medium"
+          className="w-full mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm rounded transition-colors font-medium"
         >
           Next: Edit Plan →
         </button>
       </div>
-    );
-  }
 
-  // Step 2: Edit Plan
-  if (currentStep === "edit" && !result) {
-    return (
-      <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
+      {/* Step 2: Edit Plan */}
+      <div className={currentStep === "edit" ? "space-y-4 max-h-[600px] overflow-y-auto pr-2" : "hidden"}>
         {/* Title */}
         <div>
           <label className="block text-xs text-gray-400 mb-1.5">
@@ -630,13 +680,9 @@ export function GenericEpicCreator() {
           </button>
         </div>
       </div>
-    );
-  }
 
-  // Step 3: Review & Create
-  if (currentStep === "review" && !result) {
-    return (
-      <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
+      {/* Step 3: Review & Create */}
+      <div className={currentStep === "review" ? "space-y-4 max-h-[600px] overflow-y-auto pr-2" : "hidden"}>
         <div className="p-4 bg-mid-gray/5 border border-mid-gray/10 rounded space-y-3">
           <div>
             <div className="text-xs text-gray-400">Title</div>
@@ -710,60 +756,6 @@ export function GenericEpicCreator() {
           </button>
         </div>
       </div>
-    );
-  }
-
-  // Success State
-  if (result) {
-    return (
-      <div className="p-4 bg-green-500/10 border border-green-500/20 rounded space-y-3">
-        <div className="flex items-center gap-2">
-          <span className="text-green-400 text-lg">✓</span>
-          <span className="text-sm font-medium text-white">
-            Epic Created Successfully!
-          </span>
-        </div>
-        <div className="space-y-1 text-xs text-gray-300">
-          <div>
-            <span className="text-gray-400">Epic Number:</span>{" "}
-            <span className="font-mono text-white">#{result.epic_number}</span>
-          </div>
-          <div>
-            <span className="text-gray-400">Repository:</span>{" "}
-            <span className="font-mono text-white">{result.repo}</span>
-          </div>
-          <div>
-            <span className="text-gray-400">Phases:</span>{" "}
-            <span className="text-white">{result.phases.length}</span>
-          </div>
-          <div>
-            <a
-              href={result.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300 underline"
-            >
-              View on GitHub →
-            </a>
-          </div>
-        </div>
-        <div className="mt-3 pt-3 border-t border-green-500/20 text-xs text-gray-400">
-          <strong>Next steps:</strong>
-          <ol className="mt-1 ml-4 list-decimal space-y-1">
-            <li>Create sub-issues for each phase</li>
-            <li>Implement manual phases</li>
-            <li>Spawn agents for agent-assisted phases</li>
-          </ol>
-        </div>
-        <button
-          onClick={resetForm}
-          className="w-full mt-3 px-4 py-2 bg-mid-gray/20 hover:bg-mid-gray/30 text-white text-sm rounded transition-colors"
-        >
-          Create Another Epic
-        </button>
-      </div>
-    );
-  }
-
-  return null;
+    </div>
+  );
 }

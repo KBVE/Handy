@@ -1,10 +1,11 @@
 import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Terminal, LayoutGrid, Settings } from "lucide-react";
+import { Terminal, LayoutGrid, Settings, GitPullRequest } from "lucide-react";
 import { DevOpsSettings } from "./DevOpsSettings";
 import { TmuxSessionsGrid } from "./TmuxSessionsGrid";
+import { OrchestrationTab } from "./OrchestrationTab";
 
-type TabId = "settings" | "sessions";
+type TabId = "settings" | "sessions" | "orchestration";
 
 interface Tab {
   id: TabId;
@@ -17,6 +18,11 @@ const tabs: Tab[] = [
     id: "settings",
     labelKey: "devops.tabs.settings",
     icon: <Settings className="w-4 h-4" />,
+  },
+  {
+    id: "orchestration",
+    labelKey: "devops.tabs.orchestration",
+    icon: <GitPullRequest className="w-4 h-4" />,
   },
   {
     id: "sessions",
@@ -67,6 +73,7 @@ export const DevOpsLayout: React.FC = () => {
       {/* Tab content */}
       <div className="w-full">
         {activeTab === "settings" && <DevOpsSettings />}
+        {activeTab === "orchestration" && <OrchestrationTab />}
         {activeTab === "sessions" && <TmuxSessionsGrid />}
       </div>
     </div>

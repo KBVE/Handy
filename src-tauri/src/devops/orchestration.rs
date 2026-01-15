@@ -747,7 +747,7 @@ pub fn set_active_epic_from_recovery(
                 issue_number: s.issue_number,
                 title: s.title.clone(),
                 phase: s.phase,
-                state: s.state.clone(),
+                state: s.state.to_lowercase(), // Normalize to lowercase for consistent comparison
                 agent_type: None, // Will be filled when agent is assigned
                 session_name: session_name.clone(),
                 agent_session: session_name,

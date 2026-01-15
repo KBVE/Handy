@@ -75,25 +75,29 @@ export const EpicMonitor: React.FC = () => {
     }
   };
 
+  // Helper to check state (GitHub returns uppercase, normalize for comparison)
+  const isOpen = (state: string) => state.toLowerCase() === "open";
+  const isClosed = (state: string) => state.toLowerCase() === "closed";
+
   // Count sub-issues by state
   // In Progress: Agent is working, no PR yet
   const inProgressCount = activeEpic
-    ? activeEpic.sub_issues.filter((s) => s.state === "open" && s.has_agent_working && !s.pr_url).length
+    ? activeEpic.sub_issues.filter((s) => isOpen(s.state) && s.has_agent_working && !s.pr_url).length
     : 0;
 
   // Ready: PR created, awaiting review/merge (work is done, ready for human review)
   const readyCount = activeEpic
-    ? activeEpic.sub_issues.filter((s) => s.state === "open" && s.pr_url).length
+    ? activeEpic.sub_issues.filter((s) => isOpen(s.state) && s.pr_url).length
     : 0;
 
   // Queued: Open issues with no agent assigned and no PR (waiting to be picked up)
   const queuedCount = activeEpic
-    ? activeEpic.sub_issues.filter((s) => s.state === "open" && !s.has_agent_working && !s.pr_url).length
+    ? activeEpic.sub_issues.filter((s) => isOpen(s.state) && !s.has_agent_working && !s.pr_url).length
     : 0;
 
   // Completed: Issue is closed (PR merged)
   const completedCount = activeEpic
-    ? activeEpic.sub_issues.filter((s) => s.state === "closed").length
+    ? activeEpic.sub_issues.filter((s) => isClosed(s.state)).length
     : 0;
 
   // Total active agents (for header display)

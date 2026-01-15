@@ -595,6 +595,8 @@ pub fn run() {
         commands::devops::toggle_agent_enabled,
         commands::devops::get_enabled_agents,
         commands::devops::set_enabled_agents,
+        commands::devops::get_sandbox_enabled,
+        commands::devops::set_sandbox_enabled,
         commands::devops::create_epic,
         commands::devops::create_sub_issues,
         commands::devops::update_epic_progress,
@@ -606,6 +608,13 @@ pub fn run() {
         commands::devops::get_epic_phase_status,
         commands::devops::load_epic,
         commands::devops::load_epic_for_recovery,
+        // Epic state persistence commands
+        commands::devops::get_active_epic_state,
+        commands::devops::set_active_epic_state,
+        commands::devops::set_active_epic_from_recovery,
+        commands::devops::clear_active_epic_state,
+        commands::devops::sync_active_epic_state,
+        commands::devops::update_epic_sub_issue_agent,
         // Docker sandbox commands
         commands::devops::is_docker_available,
         commands::devops::spawn_sandbox,

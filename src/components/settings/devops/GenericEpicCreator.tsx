@@ -9,6 +9,7 @@ import type {
   OrchestrationResult,
 } from "../../../bindings";
 import { toast } from "../../../stores/toastStore";
+import { useDevOpsStore } from "../../../stores/devopsStore";
 
 interface PlanTemplate {
   id: string;
@@ -83,6 +84,15 @@ type Step = "template" | "edit" | "review" | "link";
 type CreateMode = "new" | "link";
 
 export function GenericEpicCreator() {
+  // Get persisted Epic state from store
+  const {
+    activeEpic,
+    epicLoading,
+    setActiveEpicFromRecovery,
+    syncActiveEpic,
+    clearActiveEpic,
+  } = useDevOpsStore();
+
   const [currentStep, setCurrentStep] = useState<Step>("template");
   const [createMode, setCreateMode] = useState<CreateMode>("new");
   const [selectedTemplate, setSelectedTemplate] = useState<string>("blank");
@@ -194,6 +204,80 @@ export function GenericEpicCreator() {
     };
     loadTemplates();
   }, []);
+
+  // Restore Epic state from persisted store on mount
+  useEffect(() => {
+    if (activeEpic && !result) {
+      // We have a persisted Epic but no local result yet - restore state
+      // Convert ActiveEpicState back to EpicInfo for the UI
+      const restoredEpic: EpicInfo = {
+        epic_number: activeEpic.epic_number,
+        repo: activeEpic.tracking_repo,
+        work_repo: activeEpic.work_repo,
+        title: activeEpic.title,
+        url: activeEpic.url,
+        phases: activeEpic.phases.map((p) => ({
+          name: p.name,
+          description: "", // Not stored in ActiveEpicState
+          approach: "agent-assisted",
+        })),
+      };
+      setResult(restoredEpic);
+      setLinkRepo(activeEpic.tracking_repo);
+      setLinkEpicNumber(activeEpic.epic_number.toString());
+      setCreateMode("link");
+      setCurrentStep("link");
+
+      // Also build recovery info if we have sub-issues
+      if (activeEpic.sub_issues.length > 0) {
+        const subIssues = activeEpic.sub_issues.map((s) => ({
+          issue_number: s.issue_number,
+          title: s.title,
+          phase: s.phase ?? null,
+          state: s.state,
+          labels: [], // Not stored in TrackedSubIssue
+          has_agent_working: s.has_agent_working,
+          url: s.url,
+        }));
+
+        const completed = subIssues.filter((s) => s.state === "closed").length;
+        const readyForAgents = subIssues.filter(
+          (s) => s.state === "open" && !s.has_agent_working
+        );
+        const inProgress = subIssues.filter((s) => s.has_agent_working);
+
+        // Calculate phases without issues
+        const phasesWithIssues = new Set(
+          subIssues.map((s) => s.phase).filter((p): p is number => p !== null)
+        );
+        const allPhaseNumbers = activeEpic.phases.map((p) => p.phase_number);
+        const phasesWithoutIssues = allPhaseNumbers.filter(
+          (pn) => !phasesWithIssues.has(pn)
+        );
+
+        const restoredRecovery: EpicRecoveryInfo = {
+          epic: restoredEpic,
+          sub_issues: subIssues,
+          progress: {
+            total: subIssues.length,
+            completed,
+            percentage: subIssues.length > 0 ? Math.round((completed / subIssues.length) * 100) : 0,
+            remaining: subIssues.length - completed,
+          },
+          phases_without_issues: phasesWithoutIssues,
+          ready_for_agents: readyForAgents,
+          in_progress: inProgress,
+        };
+        setRecoveryInfo(restoredRecovery);
+      }
+
+      toast.info(
+        "Epic Restored",
+        `Restored active Epic #${activeEpic.epic_number}: ${activeEpic.title}`,
+        5000
+      );
+    }
+  }, [activeEpic, result]);
 
   const loadTemplate = (templateId: string) => {
     const template = templates.find((t) => t.id === templateId);
@@ -358,12 +442,15 @@ export function GenericEpicCreator() {
         epicNumber: epicNum,
       });
 
+      // Persist the Epic state to the store (survives tab switches and app restarts)
+      await setActiveEpicFromRecovery(recovery);
+
       setRecoveryInfo(recovery);
       setResult(recovery.epic);
 
       toast.success(
-        "Epic Linked Successfully",
-        `Linked to Epic #${recovery.epic.epic_number}: ${recovery.epic.title}`,
+        "Epic Linked & Saved",
+        `Epic #${recovery.epic.epic_number} is now your active Epic. State will persist across sessions.`,
         8000
       );
     } catch (err) {
@@ -374,7 +461,7 @@ export function GenericEpicCreator() {
     }
   };
 
-  const resetForm = () => {
+  const resetForm = (clearPersistedEpic = false) => {
     setCurrentStep("template");
     setCreateMode("new");
     setSelectedTemplate("blank");
@@ -389,6 +476,23 @@ export function GenericEpicCreator() {
     setAutoSpawnAgents(false);
     setLinkEpicNumber("");
     setRecoveryInfo(null);
+
+    // Optionally clear the persisted Epic state
+    if (clearPersistedEpic) {
+      clearActiveEpic(true); // Archive it for history
+      toast.info("Epic Unlinked", "The active Epic has been archived");
+    }
+  };
+
+  // Sync Epic with GitHub to get latest status
+  const handleSyncEpic = async () => {
+    if (!activeEpic) return;
+    try {
+      await syncActiveEpic();
+      toast.success("Epic Synced", "Updated sub-issue status from GitHub");
+    } catch (err) {
+      toast.error("Sync Failed", err as string);
+    }
   };
 
   // Start orchestration - create sub-issues and spawn agents
@@ -473,6 +577,49 @@ export function GenericEpicCreator() {
         </div>
 
         {/* Recovery Info for Linked Epics */}
+        {/* Phase Status from persisted state */}
+        {activeEpic && activeEpic.phases.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-green-500/20">
+            <div className="text-xs text-green-400 font-medium mb-2">
+              Phase Progress:
+            </div>
+            <div className="space-y-2">
+              {activeEpic.phases.map((phase) => {
+                const statusColors = {
+                  completed: "text-green-400 bg-green-500/20",
+                  in_progress: "text-yellow-400 bg-yellow-500/20",
+                  not_started: "text-gray-400 bg-gray-500/20",
+                  skipped: "text-gray-500 bg-gray-500/10",
+                };
+                const statusLabels = {
+                  completed: "✓ Complete",
+                  in_progress: "▶ In Progress",
+                  not_started: "○ Not Started",
+                  skipped: "⊘ Skipped",
+                };
+                const colorClass = statusColors[phase.status] || statusColors.not_started;
+                const label = statusLabels[phase.status] || statusLabels.not_started;
+
+                return (
+                  <div key={phase.phase_number} className="flex items-center gap-2 text-xs">
+                    <span className={`px-2 py-0.5 rounded ${colorClass}`}>
+                      Phase {phase.phase_number}
+                    </span>
+                    <span className="text-white">{phase.name}</span>
+                    <span className="text-gray-500">—</span>
+                    <span className={colorClass.split(" ")[0]}>{label}</span>
+                    {phase.total_count > 0 && (
+                      <span className="text-gray-400">
+                        ({phase.completed_count}/{phase.total_count} issues)
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {recoveryInfo && (
           <div className="mt-3 pt-3 border-t border-green-500/20">
             <div className="text-xs text-green-400 font-medium mb-2">
@@ -671,34 +818,112 @@ export function GenericEpicCreator() {
               )}
             </div>
 
-            {/* Phase buttons */}
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => handleStartOrchestration([1])}
-                disabled={orchestrating}
-                className="px-3 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-xs rounded transition-colors disabled:opacity-50"
-              >
-                {orchestrating ? "Starting..." : "Start Phase 1"}
-              </button>
-              {result.phases.length > 1 && (
-                <button
-                  onClick={() => handleStartOrchestration(result.phases.map((_, i) => i + 1))}
-                  disabled={orchestrating}
-                  className="px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 text-xs rounded transition-colors disabled:opacity-50"
-                >
-                  {orchestrating ? "Starting..." : "Start All Phases"}
-                </button>
-              )}
-            </div>
+            {/* Phase buttons - smart detection of next phase */}
+            {(() => {
+              // Find the next phase to work on
+              const nextPhase = activeEpic?.phases.find(
+                (p) => p.status === "not_started" || p.status === "in_progress"
+              );
+              const nextPhaseNum = nextPhase?.phase_number ?? 1;
+              const allCompleted = activeEpic?.phases.every((p) => p.status === "completed");
+              const phasesNeedingWork = activeEpic?.phases
+                .filter((p) => p.status !== "completed" && p.status !== "skipped")
+                .map((p) => p.phase_number) ?? [1];
+
+              return (
+                <div className="flex flex-wrap gap-2">
+                  {allCompleted ? (
+                    <div className="text-green-400 text-xs py-1.5">
+                      ✓ All phases complete!
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => handleStartOrchestration([nextPhaseNum])}
+                        disabled={orchestrating}
+                        className="px-3 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-xs rounded transition-colors disabled:opacity-50"
+                      >
+                        {orchestrating
+                          ? "Starting..."
+                          : nextPhase?.status === "in_progress"
+                            ? `Continue Phase ${nextPhaseNum}`
+                            : `Start Phase ${nextPhaseNum}`}
+                      </button>
+                      {phasesNeedingWork.length > 1 && (
+                        <button
+                          onClick={() => handleStartOrchestration(phasesNeedingWork)}
+                          disabled={orchestrating}
+                          className="px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 text-xs rounded transition-colors disabled:opacity-50"
+                        >
+                          {orchestrating ? "Starting..." : `Start Phases ${phasesNeedingWork.join(", ")}`}
+                        </button>
+                      )}
+                    </>
+                  )}
+                  {/* Individual phase buttons for manual control */}
+                  {result.phases.length > 1 && (
+                    <div className="w-full mt-2 flex flex-wrap gap-1">
+                      {result.phases.map((phase, idx) => {
+                        const phaseNum = idx + 1;
+                        const phaseState = activeEpic?.phases.find((p) => p.phase_number === phaseNum);
+                        const isComplete = phaseState?.status === "completed";
+                        return (
+                          <button
+                            key={phaseNum}
+                            onClick={() => handleStartOrchestration([phaseNum])}
+                            disabled={orchestrating || isComplete}
+                            className={`px-2 py-1 text-[10px] rounded transition-colors ${
+                              isComplete
+                                ? "bg-green-500/20 text-green-400 cursor-not-allowed"
+                                : "bg-mid-gray/20 hover:bg-mid-gray/30 text-gray-400"
+                            }`}
+                            title={phase.name}
+                          >
+                            {isComplete ? `✓ P${phaseNum}` : `P${phaseNum}`}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
 
-        <button
-          onClick={resetForm}
-          className="w-full mt-3 px-4 py-2 bg-mid-gray/20 hover:bg-mid-gray/30 text-white text-sm rounded transition-colors"
-        >
-          Create Another Epic
-        </button>
+        {/* Action buttons */}
+        <div className="flex gap-2 mt-3">
+          {isLinkedEpic && (
+            <>
+              <button
+                onClick={handleSyncEpic}
+                disabled={epicLoading}
+                className="flex-1 px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-sm rounded transition-colors disabled:opacity-50"
+              >
+                {epicLoading ? "Syncing..." : "Sync with GitHub"}
+              </button>
+              <button
+                onClick={() => resetForm(true)}
+                className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 text-sm rounded transition-colors"
+              >
+                Unlink Epic
+              </button>
+            </>
+          )}
+          <button
+            onClick={() => resetForm(false)}
+            className="flex-1 px-4 py-2 bg-mid-gray/20 hover:bg-mid-gray/30 text-white text-sm rounded transition-colors"
+          >
+            {isLinkedEpic ? "Link Different Epic" : "Create Another Epic"}
+          </button>
+        </div>
+
+        {/* Persistence indicator */}
+        {activeEpic && (
+          <div className="text-xs text-green-400/70 text-center mt-2">
+            ✓ Epic state is persisted and will survive app restarts
+          </div>
+        )}
       </div>
     );
   }

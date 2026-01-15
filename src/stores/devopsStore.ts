@@ -5,6 +5,9 @@ import {
   AgentStatus,
   TmuxSession,
   RecoveredSession,
+  ActiveEpicState,
+  EpicInfo,
+  EpicRecoveryInfo,
 } from "@/bindings";
 
 interface DevOpsStore {
@@ -19,6 +22,11 @@ interface DevOpsStore {
   sessionsLoading: boolean;
   sessionsError: string | null;
   isTmuxRunning: boolean;
+
+  // Epic state (persisted across tab switches and app restarts)
+  activeEpic: ActiveEpicState | null;
+  epicLoading: boolean;
+  epicError: string | null;
 
   // Current machine ID
   currentMachineId: string;
@@ -44,6 +52,13 @@ interface DevOpsStore {
   // Session actions
   refreshSessions: (showLoading?: boolean) => Promise<void>;
   killSession: (sessionName: string) => Promise<void>;
+
+  // Epic actions
+  loadActiveEpic: () => Promise<void>;
+  setActiveEpic: (epic: EpicInfo) => Promise<void>;
+  setActiveEpicFromRecovery: (recovery: EpicRecoveryInfo) => Promise<void>;
+  syncActiveEpic: () => Promise<void>;
+  clearActiveEpic: (archive?: boolean) => Promise<void>;
 
   // Internal setters
   setAgents: (agents: AgentStatus[]) => void;
@@ -74,6 +89,11 @@ export const useDevOpsStore = create<DevOpsStore>()(
     sessionsLoading: true,
     sessionsError: null,
     isTmuxRunning: false,
+
+    // Epic state (persisted via tauri-plugin-store)
+    activeEpic: null,
+    epicLoading: false,
+    epicError: null,
 
     currentMachineId: "",
 
@@ -296,11 +316,94 @@ export const useDevOpsStore = create<DevOpsStore>()(
       }
     },
 
+    // Load active Epic from persistent storage
+    loadActiveEpic: async () => {
+      set({ epicLoading: true, epicError: null });
+      try {
+        const epic = await commands.getActiveEpicState();
+        set({ activeEpic: epic ?? null });
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        set({ epicError: errorMsg });
+        console.error("Failed to load active Epic:", err);
+      } finally {
+        set({ epicLoading: false });
+      }
+    },
+
+    // Set active Epic from EpicInfo (when linking a new Epic)
+    setActiveEpic: async (epic: EpicInfo) => {
+      set({ epicLoading: true, epicError: null });
+      try {
+        const activeEpic = await commands.setActiveEpicState(epic);
+        set({ activeEpic });
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        set({ epicError: errorMsg });
+        console.error("Failed to set active Epic:", err);
+      } finally {
+        set({ epicLoading: false });
+      }
+    },
+
+    // Set active Epic from recovery info (when recovering an Epic)
+    setActiveEpicFromRecovery: async (recovery: EpicRecoveryInfo) => {
+      set({ epicLoading: true, epicError: null });
+      try {
+        const activeEpic = await commands.setActiveEpicFromRecovery(recovery);
+        set({ activeEpic });
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        set({ epicError: errorMsg });
+        console.error("Failed to set active Epic from recovery:", err);
+      } finally {
+        set({ epicLoading: false });
+      }
+    },
+
+    // Sync active Epic state with GitHub (get latest sub-issue status)
+    syncActiveEpic: async () => {
+      const currentEpic = get().activeEpic;
+      if (!currentEpic) return;
+
+      set({ epicLoading: true, epicError: null });
+      try {
+        const result = await commands.syncActiveEpicState();
+        if (result.status === "ok" && result.data) {
+          set({ activeEpic: result.data });
+        } else if (result.status === "error") {
+          set({ epicError: result.error });
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        set({ epicError: errorMsg });
+        console.error("Failed to sync active Epic:", err);
+      } finally {
+        set({ epicLoading: false });
+      }
+    },
+
+    // Clear active Epic (optionally archive it)
+    clearActiveEpic: async (archive = false) => {
+      set({ epicLoading: true, epicError: null });
+      try {
+        await commands.clearActiveEpicState(archive);
+        set({ activeEpic: null });
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        set({ epicError: errorMsg });
+        console.error("Failed to clear active Epic:", err);
+      } finally {
+        set({ epicLoading: false });
+      }
+    },
+
     // Initialize store and start polling
     initialize: async () => {
       const {
         refreshAgents,
         refreshSessions,
+        loadActiveEpic,
         _setAgentRefreshInterval,
         _setSessionRefreshInterval,
       } = get();
@@ -313,8 +416,12 @@ export const useDevOpsStore = create<DevOpsStore>()(
         console.error("Failed to get machine ID:", err);
       }
 
-      // Initial load with loading state
-      await Promise.all([refreshAgents(true), refreshSessions(true)]);
+      // Initial load with loading state (including persisted Epic state)
+      await Promise.all([
+        refreshAgents(true),
+        refreshSessions(true),
+        loadActiveEpic(),
+      ]);
 
       // Set up polling intervals
       // Agents: 12 seconds (staggered from sessions)

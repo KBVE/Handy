@@ -1744,6 +1744,18 @@ async setEnabledAgents(agents: string[]) : Promise<string[]> {
     return await TAURI_INVOKE("set_enabled_agents", { agents });
 },
 /**
+ * Get whether sandbox mode is enabled for agent spawning.
+ */
+async getSandboxEnabled() : Promise<boolean> {
+    return await TAURI_INVOKE("get_sandbox_enabled");
+},
+/**
+ * Set whether sandbox mode is enabled for agent spawning.
+ */
+async setSandboxEnabled(enabled: boolean) : Promise<boolean> {
+    return await TAURI_INVOKE("set_sandbox_enabled", { enabled });
+},
+/**
  * Create a new epic issue with standardized structure
  */
 async createEpic(config: EpicConfig) : Promise<Result<EpicInfo, string>> {
@@ -1864,6 +1876,52 @@ async loadEpic(repo: string, epicNumber: number) : Promise<Result<EpicInfo, stri
 async loadEpicForRecovery(repo: string, epicNumber: number) : Promise<Result<EpicRecoveryInfo, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("load_epic_for_recovery", { repo, epicNumber }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Get the currently active Epic state (persisted across app restarts).
+ */
+async getActiveEpicState() : Promise<ActiveEpicState | null> {
+    return await TAURI_INVOKE("get_active_epic_state");
+},
+/**
+ * Set the active Epic from an EpicInfo (when linking an Epic).
+ */
+async setActiveEpicState(epicInfo: EpicInfo) : Promise<ActiveEpicState> {
+    return await TAURI_INVOKE("set_active_epic_state", { epicInfo });
+},
+/**
+ * Set the active Epic from recovery info (more complete data with sub-issues).
+ */
+async setActiveEpicFromRecovery(recovery: EpicRecoveryInfo) : Promise<ActiveEpicState> {
+    return await TAURI_INVOKE("set_active_epic_from_recovery", { recovery });
+},
+/**
+ * Clear the active Epic state. If archive is true, moves to history.
+ */
+async clearActiveEpicState(archive: boolean) : Promise<ActiveEpicState | null> {
+    return await TAURI_INVOKE("clear_active_epic_state", { archive });
+},
+/**
+ * Sync the active Epic state with GitHub to get latest sub-issue status.
+ */
+async syncActiveEpicState() : Promise<Result<ActiveEpicState | null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("sync_active_epic_state") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Update a sub-issue's agent assignment in the active Epic.
+ */
+async updateEpicSubIssueAgent(issueNumber: number, sessionName: string | null, agentType: string | null) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_epic_sub_issue_agent", { issueNumber, sessionName, agentType }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -2164,6 +2222,46 @@ async downloadVadModelIfNeeded() : Promise<Result<string, string>> {
 /** user-defined types **/
 
 /**
+ * Persisted state for an active Epic workflow
+ */
+export type ActiveEpicState = { 
+/**
+ * Epic issue number
+ */
+epic_number: number; 
+/**
+ * Tracking repository (where Epic issue lives)
+ */
+tracking_repo: string; 
+/**
+ * Work repository (where code is written)
+ */
+work_repo: string; 
+/**
+ * Epic title
+ */
+title: string; 
+/**
+ * Epic URL
+ */
+url: string; 
+/**
+ * Phases with their tracked state
+ */
+phases: TrackedPhase[]; 
+/**
+ * All sub-issues for this epic
+ */
+sub_issues: TrackedSubIssue[]; 
+/**
+ * When this Epic was linked/loaded
+ */
+linked_at: string; 
+/**
+ * Last time state was synced with GitHub
+ */
+last_synced_at: string | null }
+/**
  * Result of completing agent work
  */
 export type AgentCompletionResult = { 
@@ -2283,7 +2381,7 @@ is_attached: boolean;
  * Whether this agent is on the current machine
  */
 is_local: boolean }
-export type AppSettings = { bindings: Partial<{ [key in string]: ShortcutBinding }>; push_to_talk: boolean; audio_feedback: boolean; audio_feedback_volume?: number; sound_theme?: SoundTheme; start_hidden?: boolean; autostart_enabled?: boolean; update_checks_enabled?: boolean; selected_model?: string; always_on_microphone?: boolean; selected_microphone?: string | null; clamshell_microphone?: string | null; selected_output_device?: string | null; translate_to_english?: boolean; selected_language?: string; overlay_position?: OverlayPosition; debug_mode?: boolean; log_level?: LogLevel; custom_words?: string[]; model_unload_timeout?: ModelUnloadTimeout; word_correction_threshold?: number; history_limit?: number; recording_retention_period?: RecordingRetentionPeriod; paste_method?: PasteMethod; clipboard_handling?: ClipboardHandling; post_process_enabled?: boolean; post_process_provider_id?: string; post_process_providers?: PostProcessProvider[]; post_process_api_keys?: Partial<{ [key in string]: string }>; post_process_models?: Partial<{ [key in string]: string }>; post_process_prompts?: LLMPrompt[]; post_process_selected_prompt_id?: string | null; mute_while_recording?: boolean; append_trailing_space?: boolean; app_language?: string; filler_detection_enabled?: boolean; filler_output_mode?: FillerOutputMode; custom_filler_words?: string[]; show_filler_overlay?: boolean; active_ui_section?: string; onichan_silence_threshold?: number; enabled_agents?: string[] }
+export type AppSettings = { bindings: Partial<{ [key in string]: ShortcutBinding }>; push_to_talk: boolean; audio_feedback: boolean; audio_feedback_volume?: number; sound_theme?: SoundTheme; start_hidden?: boolean; autostart_enabled?: boolean; update_checks_enabled?: boolean; selected_model?: string; always_on_microphone?: boolean; selected_microphone?: string | null; clamshell_microphone?: string | null; selected_output_device?: string | null; translate_to_english?: boolean; selected_language?: string; overlay_position?: OverlayPosition; debug_mode?: boolean; log_level?: LogLevel; custom_words?: string[]; model_unload_timeout?: ModelUnloadTimeout; word_correction_threshold?: number; history_limit?: number; recording_retention_period?: RecordingRetentionPeriod; paste_method?: PasteMethod; clipboard_handling?: ClipboardHandling; post_process_enabled?: boolean; post_process_provider_id?: string; post_process_providers?: PostProcessProvider[]; post_process_api_keys?: Partial<{ [key in string]: string }>; post_process_models?: Partial<{ [key in string]: string }>; post_process_prompts?: LLMPrompt[]; post_process_selected_prompt_id?: string | null; mute_while_recording?: boolean; append_trailing_space?: boolean; app_language?: string; filler_detection_enabled?: boolean; filler_output_mode?: FillerOutputMode; custom_filler_words?: string[]; show_filler_overlay?: boolean; active_ui_section?: string; onichan_silence_threshold?: number; enabled_agents?: string[]; sandbox_enabled?: boolean }
 /**
  * Configuration for assigning an issue to an agent.
  */
@@ -3638,6 +3736,90 @@ metadata: AgentMetadata | null;
  * Current status
  */
 status: SessionStatus }
+/**
+ * Tracked state for a phase
+ */
+export type TrackedPhase = { 
+/**
+ * Phase number (1-indexed)
+ */
+phase_number: number; 
+/**
+ * Phase name
+ */
+name: string; 
+/**
+ * Phase status
+ */
+status: TrackedPhaseStatus; 
+/**
+ * Sub-issue numbers assigned to this phase
+ */
+sub_issues: number[]; 
+/**
+ * Count of completed sub-issues
+ */
+completed_count: number; 
+/**
+ * Total sub-issues for this phase
+ */
+total_count: number }
+/**
+ * Status of a phase within an Epic (for persisted tracking)
+ */
+export type TrackedPhaseStatus = 
+/**
+ * Phase not started
+ */
+"not_started" | 
+/**
+ * Phase is in progress
+ */
+"in_progress" | 
+/**
+ * Phase is completed
+ */
+"completed" | 
+/**
+ * Phase was skipped
+ */
+"skipped"
+/**
+ * Tracked state for a sub-issue
+ */
+export type TrackedSubIssue = { 
+/**
+ * Issue number
+ */
+issue_number: number; 
+/**
+ * Issue title
+ */
+title: string; 
+/**
+ * Phase number this belongs to
+ */
+phase: number | null; 
+/**
+ * Current state (open/closed)
+ */
+state: string; 
+/**
+ * Agent type assigned
+ */
+agent_type: string | null; 
+/**
+ * Session name if agent is working
+ */
+session_name: string | null; 
+/**
+ * Whether an agent is currently working
+ */
+has_agent_working: boolean; 
+/**
+ * URL to the issue
+ */
+url: string }
 /**
  * Result of a worktree creation attempt.
  */

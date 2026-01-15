@@ -611,10 +611,12 @@ pub fn close_github_pr(repo: String, number: u64, comment: Option<String>) -> Re
 
 /// Spawn a new agent to work on an issue.
 ///
-/// Creates a worktree, tmux session, and updates the issue with metadata.
+/// Creates a worktree, tmux session (or Docker container if sandbox enabled),
+/// and updates the issue with metadata.
 #[tauri::command]
 #[specta::specta]
 pub fn spawn_agent(
+    app: AppHandle,
     repo: String,
     issue_number: u64,
     agent_type: String,
@@ -622,7 +624,14 @@ pub fn spawn_agent(
     session_name: Option<String>,
     worktree_prefix: Option<String>,
     working_labels: Option<Vec<String>>,
+    use_sandbox: Option<bool>,
 ) -> Result<SpawnResult, String> {
+    // Get sandbox setting from app settings if not explicitly provided
+    let sandbox_enabled = use_sandbox.unwrap_or_else(|| {
+        let app_settings = settings::get_settings(&app);
+        app_settings.sandbox_enabled
+    });
+
     let config = SpawnConfig {
         repo,
         issue_number,
@@ -630,6 +639,8 @@ pub fn spawn_agent(
         session_name,
         worktree_prefix,
         working_labels: working_labels.unwrap_or_default(),
+        use_sandbox: sandbox_enabled,
+        sandbox_ports: vec![], // Auto-detect ports from project
     };
     orchestrator::spawn_agent(&config, &repo_path)
 }
@@ -761,6 +772,24 @@ pub fn set_enabled_agents(app: AppHandle, agents: Vec<String>) -> Vec<String> {
     let result = app_settings.enabled_agents.clone();
     settings::write_settings(&app, app_settings);
     result
+}
+
+/// Get whether sandbox mode is enabled for agent spawning.
+#[tauri::command]
+#[specta::specta]
+pub fn get_sandbox_enabled(app: AppHandle) -> bool {
+    let app_settings = settings::get_settings(&app);
+    app_settings.sandbox_enabled
+}
+
+/// Set whether sandbox mode is enabled for agent spawning.
+#[tauri::command]
+#[specta::specta]
+pub fn set_sandbox_enabled(app: AppHandle, enabled: bool) -> bool {
+    let mut app_settings = settings::get_settings(&app);
+    app_settings.sandbox_enabled = enabled;
+    settings::write_settings(&app, app_settings);
+    enabled
 }
 
 // ===== Epic Workflow Operations =====
@@ -910,6 +939,73 @@ pub async fn load_epic_for_recovery(
     epic_number: u32,
 ) -> Result<crate::devops::operations::EpicRecoveryInfo, String> {
     crate::devops::operations::load_epic_for_recovery(repo, epic_number).await
+}
+
+// ===== Epic State Persistence Commands =====
+
+/// Get the currently active Epic state (persisted across app restarts).
+#[tauri::command]
+#[specta::specta]
+pub fn get_active_epic_state(
+    app: AppHandle,
+) -> Option<crate::devops::orchestration::ActiveEpicState> {
+    crate::devops::orchestration::get_active_epic(&app)
+}
+
+/// Set the active Epic from an EpicInfo (when linking an Epic).
+#[tauri::command]
+#[specta::specta]
+pub fn set_active_epic_state(
+    app: AppHandle,
+    epic_info: crate::devops::operations::EpicInfo,
+) -> crate::devops::orchestration::ActiveEpicState {
+    crate::devops::orchestration::set_active_epic(&app, &epic_info)
+}
+
+/// Set the active Epic from recovery info (more complete data with sub-issues).
+#[tauri::command]
+#[specta::specta]
+pub fn set_active_epic_from_recovery(
+    app: AppHandle,
+    recovery: crate::devops::operations::EpicRecoveryInfo,
+) -> crate::devops::orchestration::ActiveEpicState {
+    crate::devops::orchestration::set_active_epic_from_recovery(&app, &recovery)
+}
+
+/// Clear the active Epic state. If archive is true, moves to history.
+#[tauri::command]
+#[specta::specta]
+pub fn clear_active_epic_state(
+    app: AppHandle,
+    archive: bool,
+) -> Option<crate::devops::orchestration::ActiveEpicState> {
+    crate::devops::orchestration::clear_active_epic(&app, archive)
+}
+
+/// Sync the active Epic state with GitHub to get latest sub-issue status.
+#[tauri::command]
+#[specta::specta]
+pub async fn sync_active_epic_state(
+    app: AppHandle,
+) -> Result<Option<crate::devops::orchestration::ActiveEpicState>, String> {
+    crate::devops::orchestration::sync_active_epic(&app).await
+}
+
+/// Update a sub-issue's agent assignment in the active Epic.
+#[tauri::command]
+#[specta::specta]
+pub fn update_epic_sub_issue_agent(
+    app: AppHandle,
+    issue_number: u32,
+    session_name: Option<String>,
+    agent_type: Option<String>,
+) -> Result<(), String> {
+    crate::devops::orchestration::update_epic_sub_issue_agent(
+        &app,
+        issue_number,
+        session_name.as_deref(),
+        agent_type.as_deref(),
+    )
 }
 
 // ============================================================================

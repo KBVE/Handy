@@ -2,6 +2,7 @@
 //!
 //! This module provides high-level orchestration functions for managing
 //! the agent pipeline, including issue assignment, PR detection, and state management.
+//! Also provides Epic state persistence for tracking active Epic workflows.
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -9,11 +10,15 @@ use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
 
 use super::github::{self, GitHubPullRequest};
+use super::operations::epic::{EpicInfo, EpicRecoveryInfo, ExistingSubIssue, PhaseConfig};
 use super::orchestrator::{self, SpawnConfig, SpawnResult};
 use super::pipeline::{PipelineItem, PipelineState, PipelineStatus};
 
 /// Store path for pipeline state.
 pub const PIPELINE_STORE_PATH: &str = "pipeline_store.json";
+
+/// Store path for Epic state.
+pub const EPIC_STORE_PATH: &str = "epic_store.json";
 
 /// Configuration for assigning an issue to an agent.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -124,6 +129,8 @@ pub fn assign_issue_to_agent(
         session_name: None,
         worktree_prefix: Some("handy".to_string()),
         working_labels: config.start_labels.clone(),
+        use_sandbox: false, // TODO: Get from app settings
+        sandbox_ports: vec![], // Auto-detect ports from project
     };
 
     // 3. Spawn the agent (creates worktree and session)
@@ -412,6 +419,329 @@ pub fn remove_pipeline_item(
     let removed = state.remove_item(item_id);
     save_pipeline_state(app, &state);
     Ok(removed)
+}
+
+// ========== Epic State Management ==========
+
+/// Status of a phase within an Epic (for persisted tracking)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum TrackedPhaseStatus {
+    /// Phase not started
+    NotStarted,
+    /// Phase is in progress
+    InProgress,
+    /// Phase is completed
+    Completed,
+    /// Phase was skipped
+    Skipped,
+}
+
+impl Default for TrackedPhaseStatus {
+    fn default() -> Self {
+        Self::NotStarted
+    }
+}
+
+/// Tracked state for a phase
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct TrackedPhase {
+    /// Phase number (1-indexed)
+    pub phase_number: u32,
+    /// Phase name
+    pub name: String,
+    /// Phase status
+    pub status: TrackedPhaseStatus,
+    /// Sub-issue numbers assigned to this phase
+    pub sub_issues: Vec<u32>,
+    /// Count of completed sub-issues
+    pub completed_count: usize,
+    /// Total sub-issues for this phase
+    pub total_count: usize,
+}
+
+/// Persisted state for an active Epic workflow
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct ActiveEpicState {
+    /// Epic issue number
+    pub epic_number: u32,
+    /// Tracking repository (where Epic issue lives)
+    pub tracking_repo: String,
+    /// Work repository (where code is written)
+    pub work_repo: String,
+    /// Epic title
+    pub title: String,
+    /// Epic URL
+    pub url: String,
+    /// Phases with their tracked state
+    pub phases: Vec<TrackedPhase>,
+    /// All sub-issues for this epic
+    pub sub_issues: Vec<TrackedSubIssue>,
+    /// When this Epic was linked/loaded
+    pub linked_at: String,
+    /// Last time state was synced with GitHub
+    pub last_synced_at: Option<String>,
+}
+
+/// Tracked state for a sub-issue
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct TrackedSubIssue {
+    /// Issue number
+    pub issue_number: u32,
+    /// Issue title
+    pub title: String,
+    /// Phase number this belongs to
+    pub phase: Option<u32>,
+    /// Current state (open/closed)
+    pub state: String,
+    /// Agent type assigned
+    pub agent_type: Option<String>,
+    /// Session name if agent is working
+    pub session_name: Option<String>,
+    /// Whether an agent is currently working
+    pub has_agent_working: bool,
+    /// URL to the issue
+    pub url: String,
+}
+
+/// Full Epic store state (can track multiple epics, though typically one active)
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Type)]
+pub struct EpicStoreState {
+    /// Currently active Epic (the one being orchestrated)
+    pub active_epic: Option<ActiveEpicState>,
+    /// History of completed epics (for reference)
+    pub history: Vec<ActiveEpicState>,
+    /// Maximum history to keep
+    #[serde(default = "default_epic_history")]
+    pub max_history: usize,
+}
+
+fn default_epic_history() -> usize {
+    10
+}
+
+impl EpicStoreState {
+    pub fn new() -> Self {
+        Self {
+            active_epic: None,
+            history: Vec::new(),
+            max_history: default_epic_history(),
+        }
+    }
+}
+
+/// Load Epic state from persistent storage.
+pub fn load_epic_state(app: &AppHandle) -> EpicStoreState {
+    let store = match app.store(EPIC_STORE_PATH) {
+        Ok(s) => s,
+        Err(_) => return EpicStoreState::new(),
+    };
+
+    if let Some(state_value) = store.get("epic_state") {
+        serde_json::from_value::<EpicStoreState>(state_value)
+            .unwrap_or_else(|_| EpicStoreState::new())
+    } else {
+        EpicStoreState::new()
+    }
+}
+
+/// Save Epic state to persistent storage.
+pub fn save_epic_state(app: &AppHandle, state: &EpicStoreState) {
+    if let Ok(store) = app.store(EPIC_STORE_PATH) {
+        if let Ok(value) = serde_json::to_value(state) {
+            let _ = store.set("epic_state", value);
+        }
+    }
+}
+
+/// Set the active Epic from an EpicInfo (when first linking an Epic).
+pub fn set_active_epic(app: &AppHandle, epic_info: &EpicInfo) -> ActiveEpicState {
+    let mut state = load_epic_state(app);
+
+    // Convert phases to tracked phases
+    let tracked_phases: Vec<TrackedPhase> = epic_info
+        .phases
+        .iter()
+        .enumerate()
+        .map(|(i, phase)| TrackedPhase {
+            phase_number: (i + 1) as u32,
+            name: phase.name.clone(),
+            status: TrackedPhaseStatus::NotStarted,
+            sub_issues: Vec::new(),
+            completed_count: 0,
+            total_count: 0,
+        })
+        .collect();
+
+    let active = ActiveEpicState {
+        epic_number: epic_info.epic_number,
+        tracking_repo: epic_info.repo.clone(),
+        work_repo: epic_info.work_repo.clone(),
+        title: epic_info.title.clone(),
+        url: epic_info.url.clone(),
+        phases: tracked_phases,
+        sub_issues: Vec::new(),
+        linked_at: chrono::Utc::now().to_rfc3339(),
+        last_synced_at: None,
+    };
+
+    state.active_epic = Some(active.clone());
+    save_epic_state(app, &state);
+
+    active
+}
+
+/// Set the active Epic from recovery info (more complete data).
+pub fn set_active_epic_from_recovery(
+    app: &AppHandle,
+    recovery: &EpicRecoveryInfo,
+) -> ActiveEpicState {
+    let mut state = load_epic_state(app);
+
+    // Group sub-issues by phase
+    let mut phase_issues: std::collections::HashMap<u32, Vec<&ExistingSubIssue>> =
+        std::collections::HashMap::new();
+    for sub in &recovery.sub_issues {
+        if let Some(phase) = sub.phase {
+            phase_issues.entry(phase).or_default().push(sub);
+        }
+    }
+
+    // Build tracked phases with sub-issue info
+    let tracked_phases: Vec<TrackedPhase> = recovery
+        .epic
+        .phases
+        .iter()
+        .enumerate()
+        .map(|(i, phase)| {
+            let phase_num = (i + 1) as u32;
+            let phase_subs = phase_issues.get(&phase_num).map(|v| v.as_slice()).unwrap_or(&[]);
+            let completed = phase_subs.iter().filter(|s| s.state == "closed").count();
+            let in_progress = phase_subs.iter().any(|s| s.has_agent_working || s.state == "open");
+
+            TrackedPhase {
+                phase_number: phase_num,
+                name: phase.name.clone(),
+                status: if completed == phase_subs.len() && !phase_subs.is_empty() {
+                    TrackedPhaseStatus::Completed
+                } else if in_progress {
+                    TrackedPhaseStatus::InProgress
+                } else {
+                    TrackedPhaseStatus::NotStarted
+                },
+                sub_issues: phase_subs.iter().map(|s| s.issue_number).collect(),
+                completed_count: completed,
+                total_count: phase_subs.len(),
+            }
+        })
+        .collect();
+
+    // Convert sub-issues to tracked format
+    let tracked_sub_issues: Vec<TrackedSubIssue> = recovery
+        .sub_issues
+        .iter()
+        .map(|s| TrackedSubIssue {
+            issue_number: s.issue_number,
+            title: s.title.clone(),
+            phase: s.phase,
+            state: s.state.clone(),
+            agent_type: None, // Will be filled when agent is assigned
+            session_name: None,
+            has_agent_working: s.has_agent_working,
+            url: s.url.clone(),
+        })
+        .collect();
+
+    let active = ActiveEpicState {
+        epic_number: recovery.epic.epic_number,
+        tracking_repo: recovery.epic.repo.clone(),
+        work_repo: recovery.epic.work_repo.clone(),
+        title: recovery.epic.title.clone(),
+        url: recovery.epic.url.clone(),
+        phases: tracked_phases,
+        sub_issues: tracked_sub_issues,
+        linked_at: chrono::Utc::now().to_rfc3339(),
+        last_synced_at: Some(chrono::Utc::now().to_rfc3339()),
+    };
+
+    state.active_epic = Some(active.clone());
+    save_epic_state(app, &state);
+
+    active
+}
+
+/// Get the currently active Epic state.
+pub fn get_active_epic(app: &AppHandle) -> Option<ActiveEpicState> {
+    let state = load_epic_state(app);
+    state.active_epic
+}
+
+/// Clear the active Epic (move to history if completed).
+pub fn clear_active_epic(app: &AppHandle, archive: bool) -> Option<ActiveEpicState> {
+    let mut state = load_epic_state(app);
+
+    if let Some(active) = state.active_epic.take() {
+        if archive {
+            state.history.push(active.clone());
+            // Trim history
+            while state.history.len() > state.max_history {
+                state.history.remove(0);
+            }
+        }
+        save_epic_state(app, &state);
+        return Some(active);
+    }
+
+    None
+}
+
+/// Update a sub-issue's agent assignment in the active Epic.
+pub fn update_epic_sub_issue_agent(
+    app: &AppHandle,
+    issue_number: u32,
+    session_name: Option<&str>,
+    agent_type: Option<&str>,
+) -> Result<(), String> {
+    let mut state = load_epic_state(app);
+
+    if let Some(ref mut active) = state.active_epic {
+        if let Some(sub) = active
+            .sub_issues
+            .iter_mut()
+            .find(|s| s.issue_number == issue_number)
+        {
+            sub.session_name = session_name.map(|s| s.to_string());
+            sub.agent_type = agent_type.map(|s| s.to_string());
+            sub.has_agent_working = session_name.is_some();
+            save_epic_state(app, &state);
+            return Ok(());
+        }
+    }
+
+    Err(format!(
+        "Sub-issue {} not found in active epic",
+        issue_number
+    ))
+}
+
+/// Sync the active Epic state with GitHub.
+pub async fn sync_active_epic(app: &AppHandle) -> Result<Option<ActiveEpicState>, String> {
+    let state = load_epic_state(app);
+
+    if let Some(active) = &state.active_epic {
+        // Reload from GitHub
+        let recovery = super::operations::epic::load_epic_for_recovery(
+            active.tracking_repo.clone(),
+            active.epic_number,
+        )
+        .await?;
+
+        // Update with fresh data
+        let updated = set_active_epic_from_recovery(app, &recovery);
+        Ok(Some(updated))
+    } else {
+        Ok(None)
+    }
 }
 
 #[cfg(test)]

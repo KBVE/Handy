@@ -79,6 +79,19 @@ export const EpicMonitor: React.FC = () => {
   const isOpen = (state: string) => state.toLowerCase() === "open";
   const isClosed = (state: string) => state.toLowerCase() === "closed";
 
+  // Debug: Log the sub-issues to understand state
+  if (activeEpic) {
+    console.log("[EpicMonitor] sub_issues:", activeEpic.sub_issues);
+    console.log("[EpicMonitor] sub_issues details:", activeEpic.sub_issues.map(s => ({
+      issue: s.issue_number,
+      state: s.state,
+      stateLC: s.state.toLowerCase(),
+      isOpen: isOpen(s.state),
+      has_agent: s.has_agent_working,
+      pr_url: s.pr_url,
+    })));
+  }
+
   // Count sub-issues by state
   // In Progress: Agent is working, no PR yet
   const inProgressCount = activeEpic

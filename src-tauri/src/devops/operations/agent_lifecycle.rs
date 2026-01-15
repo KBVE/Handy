@@ -47,6 +47,25 @@ pub struct AgentCompletionResult {
     pub status: String,
 }
 
+/// Result of PR detection for an agent session
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct PrDetectionResult {
+    /// tmux session name
+    pub session: String,
+    /// Issue number the agent is working on
+    pub issue_number: u32,
+    /// Repository (org/repo format)
+    pub repo: String,
+    /// PR URL if found
+    pub pr_url: Option<String>,
+    /// PR number if found
+    pub pr_number: Option<u64>,
+    /// Branch name that was checked
+    pub branch_name: String,
+    /// Whether this is a newly detected PR (first time seeing it)
+    pub is_new: bool,
+}
+
 /// Spawn an agent for a GitHub issue
 ///
 /// This function:
@@ -257,6 +276,59 @@ pub async fn complete_agent_work(
         session,
         status: "completed".to_string(),
     })
+}
+
+/// Detect if a PR exists for an agent's branch
+///
+/// This function:
+/// 1. Gets agent metadata from the tmux session
+/// 2. Extracts the issue number to determine the branch name (issue-{number})
+/// 3. Queries GitHub for PRs with that head branch
+/// 4. Returns PR info if found
+pub async fn detect_pr_for_agent(session: &str) -> Result<Option<PrDetectionResult>, String> {
+    // Get agent metadata from tmux (blocking operation)
+    let metadata = tokio::task::spawn_blocking({
+        let session = session.to_string();
+        move || tmux::get_session_metadata(&session)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+    .map_err(|e| format!("Failed to get session metadata: {}", e))?;
+
+    // Get issue reference from metadata
+    let issue_ref = metadata
+        .issue_ref
+        .as_ref()
+        .ok_or_else(|| "Agent has no issue reference".to_string())?;
+
+    let (repo, issue_number) = parse_issue_ref(issue_ref)?;
+
+    // Branch name follows our convention: issue-{number}
+    let branch_name = format!("issue-{}", issue_number);
+
+    // Check GitHub for a PR with this branch
+    let pr = github::find_pr_by_branch_async(&repo, &branch_name).await?;
+
+    match pr {
+        Some(pr_info) => Ok(Some(PrDetectionResult {
+            session: session.to_string(),
+            issue_number,
+            repo,
+            pr_url: Some(pr_info.url),
+            pr_number: Some(pr_info.number),
+            branch_name,
+            is_new: false, // Caller will determine if it's new
+        })),
+        None => Ok(Some(PrDetectionResult {
+            session: session.to_string(),
+            issue_number,
+            repo,
+            pr_url: None,
+            pr_number: None,
+            branch_name,
+            is_new: false,
+        })),
+    }
 }
 
 /// Parse issue reference like "org/repo#123" into (repo, number)

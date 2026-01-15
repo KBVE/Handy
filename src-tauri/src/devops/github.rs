@@ -1371,6 +1371,52 @@ pub async fn add_pr_labels_async(
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
+/// Find a PR by head branch name (async)
+///
+/// Returns the first PR found that matches the given head branch name.
+/// Searches both open and merged PRs.
+pub async fn find_pr_by_branch_async(
+    repo: &str,
+    branch_name: &str,
+) -> Result<Option<GitHubPullRequest>, String> {
+    tokio::task::spawn_blocking({
+        let repo = repo.to_string();
+        let branch_name = branch_name.to_string();
+        move || {
+            // First check open PRs
+            let open_prs = list_prs(&repo, Some("open"), None, Some(100))?;
+            if let Some(pr) = open_prs
+                .into_iter()
+                .find(|pr| pr.head_branch == branch_name)
+            {
+                return Ok(Some(pr));
+            }
+
+            // Then check merged PRs
+            let merged_prs = list_prs(&repo, Some("merged"), None, Some(50))?;
+            if let Some(pr) = merged_prs
+                .into_iter()
+                .find(|pr| pr.head_branch == branch_name)
+            {
+                return Ok(Some(pr));
+            }
+
+            // Finally check closed (but not merged) PRs
+            let closed_prs = list_prs(&repo, Some("closed"), None, Some(50))?;
+            if let Some(pr) = closed_prs
+                .into_iter()
+                .find(|pr| pr.head_branch == branch_name)
+            {
+                return Ok(Some(pr));
+            }
+
+            Ok(None)
+        }
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

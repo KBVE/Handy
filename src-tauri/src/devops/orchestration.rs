@@ -6,13 +6,15 @@
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 use tauri_plugin_store::StoreExt;
 
 use super::github::{self, GitHubPullRequest};
+use super::operations::agent_lifecycle::{detect_pr_for_agent, PrDetectionResult};
 use super::operations::epic::{EpicInfo, EpicRecoveryInfo, ExistingSubIssue, PhaseConfig};
 use super::orchestrator::{self, SpawnConfig, SpawnResult};
 use super::pipeline::{PipelineItem, PipelineState, PipelineStatus};
+use super::tmux;
 
 /// Store path for pipeline state.
 pub const PIPELINE_STORE_PATH: &str = "pipeline_store.json";
@@ -500,10 +502,19 @@ pub struct TrackedSubIssue {
     pub agent_type: Option<String>,
     /// Session name if agent is working
     pub session_name: Option<String>,
+    /// tmux session name for the agent (if assigned)
+    #[serde(default)]
+    pub agent_session: Option<String>,
     /// Whether an agent is currently working
     pub has_agent_working: bool,
     /// URL to the issue
     pub url: String,
+    /// PR URL if agent created one
+    #[serde(default)]
+    pub pr_url: Option<String>,
+    /// PR number if agent created one
+    #[serde(default)]
+    pub pr_number: Option<u64>,
 }
 
 /// Full Epic store state (can track multiple epics, though typically one active)
@@ -711,8 +722,11 @@ pub fn set_active_epic_from_recovery(
             state: s.state.clone(),
             agent_type: None, // Will be filled when agent is assigned
             session_name: None,
+            agent_session: None,
             has_agent_working: s.has_agent_working,
             url: s.url.clone(),
+            pr_url: None,
+            pr_number: None,
         })
         .collect();
 
@@ -775,6 +789,7 @@ pub fn update_epic_sub_issue_agent(
             .find(|s| s.issue_number == issue_number)
         {
             sub.session_name = session_name.map(|s| s.to_string());
+            sub.agent_session = session_name.map(|s| s.to_string()); // Also set agent_session for PR tracking
             sub.agent_type = agent_type.map(|s| s.to_string());
             sub.has_agent_working = session_name.is_some();
             save_epic_state(app, &state);
@@ -883,6 +898,136 @@ pub async fn on_pipeline_item_complete(
     }
 
     Ok(())
+}
+
+/// Check all active agent sessions for PR creation
+///
+/// This function:
+/// 1. Gets all active tmux sessions (agents working on issues)
+/// 2. For each session, checks if a PR exists for its branch
+/// 3. Compares with previously detected PRs to identify new ones
+/// 4. Returns list of detection results with is_new flag set appropriately
+///
+/// Used by the Epic monitor to detect when agents have completed work
+/// by creating PRs, enabling automatic Epic progress updates.
+pub async fn check_sessions_for_prs(app: &AppHandle) -> Result<Vec<PrDetectionResult>, String> {
+    // Get all active sessions
+    let sessions = tokio::task::spawn_blocking(tmux::list_sessions)
+        .await
+        .map_err(|e| format!("Task join error: {}", e))?
+        .map_err(|e| format!("Failed to list sessions: {}", e))?;
+
+    // Filter to only agent sessions (those with issue_ref metadata)
+    let agent_sessions: Vec<_> = sessions
+        .into_iter()
+        .filter(|s| {
+            s.metadata
+                .as_ref()
+                .map(|m| m.issue_ref.is_some())
+                .unwrap_or(false)
+        })
+        .collect();
+
+    if agent_sessions.is_empty() {
+        return Ok(vec![]);
+    }
+
+    // Load previously detected PRs from state (track by issue number, not session)
+    let state = load_epic_state(app);
+    let known_pr_issues: std::collections::HashSet<u32> = state
+        .active_epic
+        .as_ref()
+        .map(|e| {
+            e.sub_issues
+                .iter()
+                .filter(|s| s.pr_url.is_some())
+                .map(|s| s.issue_number)
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let mut results = Vec::new();
+
+    // Check each session for PRs
+    for session in agent_sessions {
+        match detect_pr_for_agent(&session.name).await {
+            Ok(Some(mut result)) => {
+                // Check if this is a newly detected PR (by issue number)
+                if result.pr_url.is_some() {
+                    result.is_new = !known_pr_issues.contains(&result.issue_number);
+
+                    // If new PR detected, update Epic state and emit event
+                    if result.is_new {
+                        if let Some(pr_url) = &result.pr_url {
+                            // Update the sub-issue in Epic state with PR info
+                            update_sub_issue_pr_url(
+                                app,
+                                result.issue_number,
+                                pr_url,
+                                result.pr_number,
+                            );
+
+                            log::info!(
+                                "New PR detected for session {}: {} (issue #{})",
+                                session.name,
+                                pr_url,
+                                result.issue_number
+                            );
+
+                            // Emit event for real-time UI updates
+                            let _ = app.emit(
+                                "agent-pr-created",
+                                serde_json::json!({
+                                    "session": session.name,
+                                    "issue_number": result.issue_number,
+                                    "pr_url": pr_url,
+                                    "pr_number": result.pr_number,
+                                    "repo": result.repo,
+                                }),
+                            );
+                        }
+                    }
+                }
+                results.push(result);
+            }
+            Ok(None) => {
+                // Session exists but no PR info (shouldn't happen with current impl)
+            }
+            Err(e) => {
+                log::warn!("Failed to detect PR for session {}: {}", session.name, e);
+            }
+        }
+    }
+
+    Ok(results)
+}
+
+/// Update a sub-issue's PR URL in the Epic state
+fn update_sub_issue_pr_url(
+    app: &AppHandle,
+    issue_number: u32,
+    pr_url: &str,
+    pr_number: Option<u64>,
+) {
+    let mut state = load_epic_state(app);
+
+    if let Some(ref mut active) = state.active_epic {
+        // Find and update the sub-issue
+        for sub_issue in &mut active.sub_issues {
+            if sub_issue.issue_number == issue_number {
+                sub_issue.pr_url = Some(pr_url.to_string());
+                sub_issue.pr_number = pr_number;
+                log::info!(
+                    "Updated sub-issue #{} with PR URL: {}",
+                    issue_number,
+                    pr_url
+                );
+                break;
+            }
+        }
+
+        save_epic_state(app, &state);
+    }
 }
 
 #[cfg(test)]

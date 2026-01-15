@@ -650,6 +650,7 @@ pub fn run() {
         commands::devops::link_pr_to_pipeline_item,
         commands::devops::archive_pipeline_item,
         commands::devops::remove_pipeline_item,
+        commands::devops::check_sessions_for_prs,
         helpers::clamshell::is_laptop,
         vad_model::is_vad_model_ready,
         vad_model::download_vad_model_if_needed,

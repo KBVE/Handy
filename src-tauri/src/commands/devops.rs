@@ -6,6 +6,7 @@ use crate::devops::{
         self, GhAuthStatus, GitHubComment, GitHubIssue, GitHubPullRequest, IssueAgentMetadata,
         IssueWithAgent, PrStatus,
     },
+    operations::agent_lifecycle::PrDetectionResult,
     orchestrator::{
         self, AgentStatus, CompleteWorkResult, SpawnConfig, SpawnResult, WorkflowConfig,
     },
@@ -1340,4 +1341,14 @@ pub fn remove_pipeline_item(
     item_id: String,
 ) -> Result<Option<crate::devops::pipeline::PipelineItem>, String> {
     crate::devops::orchestration::remove_pipeline_item(&app, &item_id)
+}
+
+/// Check all active agent sessions for PR creation.
+///
+/// Returns a list of PR detection results for all active sessions.
+/// Each result indicates whether a PR was found and if it's newly detected.
+#[tauri::command]
+#[specta::specta]
+pub async fn check_sessions_for_prs(app: AppHandle) -> Result<Vec<PrDetectionResult>, String> {
+    crate::devops::orchestration::check_sessions_for_prs(&app).await
 }

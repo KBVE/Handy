@@ -2258,6 +2258,20 @@ async removePipelineItem(itemId: string) : Promise<Result<PipelineItem | null, s
 }
 },
 /**
+ * Check all active agent sessions for PR creation.
+ * 
+ * Returns a list of PR detection results for all active sessions.
+ * Each result indicates whether a PR was found and if it's newly detected.
+ */
+async checkSessionsForPrs() : Promise<Result<PrDetectionResult[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("check_sessions_for_prs") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Checks if the Mac is a laptop by detecting battery presence
  * 
  * This uses pmset to check for battery information.
@@ -3379,6 +3393,38 @@ pending: number;
  */
 total: number }
 /**
+ * Result of PR detection for an agent session
+ */
+export type PrDetectionResult = { 
+/**
+ * tmux session name
+ */
+session: string; 
+/**
+ * Issue number the agent is working on
+ */
+issue_number: number; 
+/**
+ * Repository (org/repo format)
+ */
+repo: string; 
+/**
+ * PR URL if found
+ */
+pr_url: string | null; 
+/**
+ * PR number if found
+ */
+pr_number: number | null; 
+/**
+ * Branch name that was checked
+ */
+branch_name: string; 
+/**
+ * Whether this is a newly detected PR (first time seeing it)
+ */
+is_new: boolean }
+/**
  * Status of a PR in the pipeline.
  */
 export type PrPipelineStatus = 
@@ -3924,13 +3970,25 @@ agent_type: string | null;
  */
 session_name: string | null; 
 /**
+ * tmux session name for the agent (if assigned)
+ */
+agent_session?: string | null; 
+/**
  * Whether an agent is currently working
  */
 has_agent_working: boolean; 
 /**
  * URL to the issue
  */
-url: string }
+url: string; 
+/**
+ * PR URL if agent created one
+ */
+pr_url?: string | null; 
+/**
+ * PR number if agent created one
+ */
+pr_number?: number | null }
 /**
  * Result of a worktree creation attempt.
  */

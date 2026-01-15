@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
+import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import {
   commands,
   AgentStatus,
@@ -9,6 +10,15 @@ import {
   EpicInfo,
   EpicRecoveryInfo,
 } from "@/bindings";
+
+// Event payload for PR creation
+interface AgentPrCreatedEvent {
+  session: string;
+  issue_number: number;
+  pr_url: string;
+  pr_number: number | null;
+  repo: string;
+}
 
 // Epic Monitor state for supervisor functionality
 export interface EpicMonitorState {
@@ -94,6 +104,7 @@ interface DevOpsStore {
   _agentRefreshInterval: number | null;
   _sessionRefreshInterval: number | null;
   _epicMonitorInterval: number | null;
+  _prEventUnlisten: UnlistenFn | null;
   _previousSubIssueStates: Map<number, string>;
   _setAgentRefreshInterval: (id: number | null) => void;
   _setSessionRefreshInterval: (id: number | null) => void;
@@ -138,6 +149,7 @@ export const useDevOpsStore = create<DevOpsStore>()(
     _agentRefreshInterval: null,
     _sessionRefreshInterval: null,
     _epicMonitorInterval: null,
+    _prEventUnlisten: null,
     _previousSubIssueStates: new Map(),
 
     // Internal setters
@@ -518,6 +530,25 @@ export const useDevOpsStore = create<DevOpsStore>()(
 
       set({ epicMonitorChecking: true });
       try {
+        // Check active sessions for PR creation (new feature)
+        try {
+          const prCheckResult = await commands.checkSessionsForPrs();
+          if (prCheckResult.status === "ok") {
+            const prResults = prCheckResult.data;
+            for (const result of prResults) {
+              if (result.is_new && result.pr_url) {
+                console.log(
+                  `[Epic Monitor] New PR detected for #${result.issue_number}: ${result.pr_url}`
+                );
+                // The backend already updated the Epic state, just log for now
+                // A future enhancement could show a toast notification here
+              }
+            }
+          }
+        } catch (err) {
+          console.warn("PR check failed (non-critical):", err);
+        }
+
         // Sync with GitHub to get latest status
         await syncActiveEpic();
 
@@ -596,6 +627,8 @@ export const useDevOpsStore = create<DevOpsStore>()(
         refreshAgents,
         refreshSessions,
         loadActiveEpic,
+        syncActiveEpic,
+        incrementCompletedCount,
         _setAgentRefreshInterval,
         _setSessionRefreshInterval,
       } = get();
@@ -615,6 +648,19 @@ export const useDevOpsStore = create<DevOpsStore>()(
         loadActiveEpic(),
       ]);
 
+      // Set up event listener for real-time PR detection
+      const unlisten = await listen<AgentPrCreatedEvent>("agent-pr-created", (event) => {
+        const { issue_number, pr_url, session } = event.payload;
+        console.log(`[DevOps] PR created for #${issue_number}: ${pr_url} (session: ${session})`);
+
+        // Sync Epic state to get updated PR info
+        syncActiveEpic();
+
+        // Increment completion counter
+        incrementCompletedCount(1);
+      });
+      set({ _prEventUnlisten: unlisten });
+
       // Set up polling intervals
       // Agents: 12 seconds (staggered from sessions)
       const agentInterval = window.setInterval(
@@ -631,9 +677,14 @@ export const useDevOpsStore = create<DevOpsStore>()(
       _setSessionRefreshInterval(sessionInterval);
     },
 
-    // Cleanup intervals
+    // Cleanup intervals and event listeners
     cleanup: () => {
-      const { _agentRefreshInterval, _sessionRefreshInterval, _epicMonitorInterval } = get();
+      const {
+        _agentRefreshInterval,
+        _sessionRefreshInterval,
+        _epicMonitorInterval,
+        _prEventUnlisten,
+      } = get();
 
       if (_agentRefreshInterval !== null) {
         clearInterval(_agentRefreshInterval);
@@ -648,6 +699,11 @@ export const useDevOpsStore = create<DevOpsStore>()(
       if (_epicMonitorInterval !== null) {
         clearInterval(_epicMonitorInterval);
         set({ _epicMonitorInterval: null });
+      }
+
+      if (_prEventUnlisten !== null) {
+        _prEventUnlisten();
+        set({ _prEventUnlisten: null });
       }
     },
   })),

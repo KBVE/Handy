@@ -14,6 +14,7 @@ import {
   CheckCheck,
   Pause,
   SkipForward,
+  GitPullRequest,
 } from "lucide-react";
 
 export const EpicMonitor: React.FC = () => {
@@ -74,21 +75,30 @@ export const EpicMonitor: React.FC = () => {
     }
   };
 
-  // Count active agents (sessions working on Epic sub-issues)
-  const activeAgentCount = activeEpic
-    ? activeEpic.sub_issues.filter((s) => s.has_agent_working).length
-    : 0;
-
+  // Count sub-issues by state
+  // In Progress: Agent is working, no PR yet
   const inProgressCount = activeEpic
-    ? activeEpic.sub_issues.filter((s) => s.state === "open" && s.has_agent_working).length
+    ? activeEpic.sub_issues.filter((s) => s.state === "open" && s.has_agent_working && !s.pr_url).length
     : 0;
 
+  // Ready: PR created, awaiting review/merge (work is done, ready for human review)
   const readyCount = activeEpic
-    ? activeEpic.sub_issues.filter((s) => s.state === "open" && !s.has_agent_working).length
+    ? activeEpic.sub_issues.filter((s) => s.state === "open" && s.pr_url).length
     : 0;
 
+  // Queued: Open issues with no agent assigned and no PR (waiting to be picked up)
+  const queuedCount = activeEpic
+    ? activeEpic.sub_issues.filter((s) => s.state === "open" && !s.has_agent_working && !s.pr_url).length
+    : 0;
+
+  // Completed: Issue is closed (PR merged)
   const completedCount = activeEpic
     ? activeEpic.sub_issues.filter((s) => s.state === "closed").length
+    : 0;
+
+  // Total active agents (for header display)
+  const activeAgentCount = activeEpic
+    ? activeEpic.sub_issues.filter((s) => s.has_agent_working).length
     : 0;
 
   if (!activeEpic) {
@@ -179,6 +189,7 @@ export const EpicMonitor: React.FC = () => {
 
       {/* Status dashboard */}
       <div className="grid grid-cols-4 gap-3">
+        {/* In Progress: Agent working, no PR yet */}
         <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
           <div className="flex items-center gap-2 text-blue-400">
             <Clock className="w-4 h-4" />
@@ -187,14 +198,16 @@ export const EpicMonitor: React.FC = () => {
           <p className="text-xl font-bold text-white mt-1">{inProgressCount}</p>
         </div>
 
+        {/* Ready: PR created, awaiting review/merge */}
         <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
           <div className="flex items-center gap-2 text-yellow-400">
-            <AlertCircle className="w-4 h-4" />
+            <GitPullRequest className="w-4 h-4" />
             <span className="text-xs">{t("devops.epicMonitor.ready")}</span>
           </div>
           <p className="text-xl font-bold text-white mt-1">{readyCount}</p>
         </div>
 
+        {/* Completed: Issue closed (PR merged) */}
         <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
           <div className="flex items-center gap-2 text-green-400">
             <CheckCircle className="w-4 h-4" />
@@ -203,14 +216,13 @@ export const EpicMonitor: React.FC = () => {
           <p className="text-xl font-bold text-white mt-1">{completedCount}</p>
         </div>
 
-        <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-lg">
-          <div className="flex items-center gap-2 text-purple-400">
-            <Eye className="w-4 h-4" />
-            <span className="text-xs">{t("devops.epicMonitor.thisSession")}</span>
+        {/* Queued: Waiting to be picked up */}
+        <div className="p-3 bg-mid-gray/10 border border-mid-gray/20 rounded-lg">
+          <div className="flex items-center gap-2 text-mid-gray">
+            <Pause className="w-4 h-4" />
+            <span className="text-xs">{t("devops.epicMonitor.queued")}</span>
           </div>
-          <p className="text-xl font-bold text-white mt-1">
-            {epicMonitor.completedSinceStart}
-          </p>
+          <p className="text-xl font-bold text-white mt-1">{queuedCount}</p>
         </div>
       </div>
 

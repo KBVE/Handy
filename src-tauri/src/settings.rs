@@ -326,6 +326,9 @@ pub struct AppSettings {
     // DevOps agent settings - which agents are enabled
     #[serde(default = "default_enabled_agents")]
     pub enabled_agents: Vec<String>,
+    // DevOps sandbox mode - run agents in Docker containers
+    #[serde(default = "default_sandbox_enabled")]
+    pub sandbox_enabled: bool,
 }
 
 fn default_model() -> String {
@@ -425,6 +428,11 @@ fn default_enabled_agents() -> Vec<String> {
     // Empty by default - agents are enabled when user toggles them on
     // or auto-enabled when detected for the first time
     vec![]
+}
+
+fn default_sandbox_enabled() -> bool {
+    // Sandbox mode is disabled by default - users must opt-in
+    false
 }
 
 fn default_post_process_provider_id() -> String {
@@ -647,6 +655,7 @@ pub fn get_default_settings() -> AppSettings {
         active_ui_section: default_active_ui_section(),
         onichan_silence_threshold: default_onichan_silence_threshold(),
         enabled_agents: default_enabled_agents(),
+        sandbox_enabled: default_sandbox_enabled(),
     }
 }
 

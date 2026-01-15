@@ -450,6 +450,8 @@ pub struct ExistingSubIssue {
 pub struct EpicRecoveryInfo {
     /// The epic info
     pub epic: EpicInfo,
+    /// The raw Epic issue body (for reading phase statuses)
+    pub epic_body: String,
     /// Existing sub-issues for this epic
     pub sub_issues: Vec<ExistingSubIssue>,
     /// Progress statistics
@@ -467,6 +469,10 @@ pub struct EpicRecoveryInfo {
 /// This fetches the epic, all its sub-issues, and determines what work
 /// remains to be done. Useful for recovering/continuing orchestration.
 pub async fn load_epic_for_recovery(repo: String, epic_number: u32) -> Result<EpicRecoveryInfo, String> {
+    // Fetch the Epic issue to get the body
+    let epic_issue = github::get_issue_async(&repo, epic_number).await?;
+    let epic_body = epic_issue.body.clone().unwrap_or_default();
+
     // Load basic epic info
     let epic = load_epic(repo.clone(), epic_number).await?;
 
@@ -550,6 +556,7 @@ pub async fn load_epic_for_recovery(repo: String, epic_number: u32) -> Result<Ep
 
     Ok(EpicRecoveryInfo {
         epic,
+        epic_body,
         sub_issues,
         progress,
         phases_without_issues,

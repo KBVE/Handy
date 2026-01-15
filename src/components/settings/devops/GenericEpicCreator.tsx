@@ -7,6 +7,8 @@ import type {
   PhaseConfig,
   StartOrchestrationConfig,
   OrchestrationResult,
+  AssignIssueConfig,
+  AssignIssueResult,
 } from "../../../bindings";
 import { toast } from "../../../stores/toastStore";
 import { useDevOpsStore } from "../../../stores/devopsStore";
@@ -139,6 +141,7 @@ export function GenericEpicCreator() {
   const [autoSpawnAgents, setAutoSpawnAgents] = useState(false);
   const [localRepoPath, setLocalRepoPath] = useState<string>("");
   const [repoPathSuggestions, setRepoPathSuggestions] = useState<string[]>([]);
+  const [spawningIssue, setSpawningIssue] = useState<number | null>(null);
 
   // New metric/label/phase inputs
   const [newMetric, setNewMetric] = useState<string>("");
@@ -495,6 +498,90 @@ export function GenericEpicCreator() {
     }
   };
 
+  // Update Epic issue on GitHub with phase status
+  const handleUpdateEpicOnGithub = async () => {
+    if (!activeEpic) return;
+
+    try {
+      // First get phase statuses
+      const phaseStatuses = await invoke("get_epic_phase_status", {
+        epicNumber: activeEpic.epic_number,
+        epicRepo: activeEpic.tracking_repo,
+        phases: activeEpic.phases.map((p) => ({
+          name: p.name,
+          description: "",
+          approach: p.status === "completed" ? "manual" : "agent-assisted",
+          tasks: [],
+          files: [],
+          dependencies: [],
+        })),
+      });
+
+      // Then update the Epic issue body
+      await invoke("update_epic_phase_status_on_github", {
+        epicRepo: activeEpic.tracking_repo,
+        epicNumber: activeEpic.epic_number,
+        phaseStatuses,
+      });
+
+      toast.success(
+        "Epic Updated",
+        "Updated Epic issue on GitHub with current phase status",
+        6000
+      );
+    } catch (err) {
+      console.error("Failed to update Epic on GitHub:", err);
+      toast.error("Update Failed", err as string, 10000);
+    }
+  };
+
+  // Spawn an agent for a specific issue
+  const handleSpawnAgentForIssue = async (issueNumber: number, issueTitle: string) => {
+    if (!activeEpic || !localRepoPath) {
+      toast.error(
+        "Cannot Spawn Agent",
+        "Please set the local repository path first"
+      );
+      return;
+    }
+
+    setSpawningIssue(issueNumber);
+    try {
+      const config: AssignIssueConfig = {
+        tracking_repo: activeEpic.tracking_repo,
+        work_repo: activeEpic.work_repo,
+        issue_number: issueNumber,
+        agent_type: "claude",
+        repo_path: localRepoPath,
+        start_labels: ["staging"],
+        remove_labels: ["agent-todo"],
+      };
+
+      const result = await invoke<AssignIssueResult>("assign_issue_to_agent_pipeline", { config });
+
+      // Update the Epic state to reflect the agent assignment
+      await invoke("update_epic_sub_issue_agent", {
+        issueNumber,
+        sessionName: result.spawn_result.session_name,
+        agentType: "claude",
+      });
+
+      // Refresh the Epic state
+      await syncActiveEpic();
+
+      toast.success(
+        "Agent Spawned",
+        `Agent working on #${issueNumber}: ${issueTitle.substring(0, 30)}...`,
+        8000
+      );
+    } catch (err) {
+      console.error("Failed to spawn agent:", err);
+      toast.error("Failed to Spawn Agent", err as string, 10000);
+    } finally {
+      setSpawningIssue(null);
+    }
+  };
+
   // Start orchestration - create sub-issues and spawn agents
   const handleStartOrchestration = async (phasesToStart: number[] = [1]) => {
     if (!result) return;
@@ -620,6 +707,66 @@ export function GenericEpicCreator() {
           </div>
         )}
 
+        {/* Local Repo Path - needed for agent spawning */}
+        {recoveryInfo && recoveryInfo.ready_for_agents.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-green-500/20">
+            <div className="text-xs text-green-400 font-medium mb-2">
+              Local Repository (for worktrees):
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={localRepoPath}
+                onChange={(e) => setLocalRepoPath(e.target.value)}
+                placeholder="/Users/me/projects/MyRepo"
+                className="flex-1 px-2 py-1.5 bg-mid-gray/20 border border-mid-gray/30 rounded text-xs text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const suggestions = await invoke<string[]>("suggest_local_repo_path", {
+                      githubRepo: result?.work_repo || activeEpic?.work_repo || "",
+                    });
+                    setRepoPathSuggestions(suggestions);
+                    if (suggestions.length > 0 && !localRepoPath) {
+                      setLocalRepoPath(suggestions[0]);
+                    }
+                  } catch (err) {
+                    console.error("Failed to suggest repo path:", err);
+                  }
+                }}
+                className="px-2 py-1.5 bg-mid-gray/30 hover:bg-mid-gray/40 text-gray-300 text-xs rounded transition-colors"
+              >
+                Detect
+              </button>
+            </div>
+            {repoPathSuggestions.length > 1 && (
+              <div className="mt-1 flex flex-wrap gap-1">
+                {repoPathSuggestions.map((path, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setLocalRepoPath(path)}
+                    className={`px-2 py-0.5 text-[10px] rounded transition-colors ${
+                      localRepoPath === path
+                        ? "bg-blue-500/30 text-blue-300"
+                        : "bg-mid-gray/20 text-gray-400 hover:bg-mid-gray/30"
+                    }`}
+                  >
+                    {path.split("/").slice(-2).join("/")}
+                  </button>
+                ))}
+              </div>
+            )}
+            {!localRepoPath && (
+              <p className="text-[10px] text-yellow-400/70 mt-1">
+                ⚠ Set repo path to enable agent spawning
+              </p>
+            )}
+          </div>
+        )}
+
         {recoveryInfo && (
           <div className="mt-3 pt-3 border-t border-green-500/20">
             <div className="text-xs text-green-400 font-medium mb-2">
@@ -662,9 +809,9 @@ export function GenericEpicCreator() {
               {recoveryInfo.ready_for_agents.length > 0 && (
                 <div>
                   <span className="text-green-400">Ready for Agents ({recoveryInfo.ready_for_agents.length}):</span>
-                  <ul className="mt-1 ml-4 list-disc space-y-0.5">
+                  <ul className="mt-1 ml-4 space-y-1">
                     {recoveryInfo.ready_for_agents.slice(0, 5).map((issue) => (
-                      <li key={issue.issue_number}>
+                      <li key={issue.issue_number} className="flex items-center gap-2">
                         <a
                           href={issue.url}
                           target="_blank"
@@ -672,8 +819,19 @@ export function GenericEpicCreator() {
                           className="text-blue-400 hover:text-blue-300"
                         >
                           #{issue.issue_number}
-                        </a>{" "}
-                        - {issue.title.substring(0, 40)}...
+                        </a>
+                        <span className="text-gray-400">-</span>
+                        <span className="text-gray-300 flex-1 truncate" title={issue.title}>
+                          {issue.title.substring(0, 35)}...
+                        </span>
+                        <button
+                          onClick={() => handleSpawnAgentForIssue(issue.issue_number, issue.title)}
+                          disabled={spawningIssue === issue.issue_number || !localRepoPath}
+                          className="px-2 py-0.5 text-[10px] bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          title={localRepoPath ? "Spawn Claude agent for this issue" : "Set local repo path first"}
+                        >
+                          {spawningIssue === issue.issue_number ? "Spawning..." : "Spawn"}
+                        </button>
                       </li>
                     ))}
                     {recoveryInfo.ready_for_agents.length > 5 && (
@@ -892,7 +1050,7 @@ export function GenericEpicCreator() {
         )}
 
         {/* Action buttons */}
-        <div className="flex gap-2 mt-3">
+        <div className="flex flex-wrap gap-2 mt-3">
           {isLinkedEpic && (
             <>
               <button
@@ -900,13 +1058,21 @@ export function GenericEpicCreator() {
                 disabled={epicLoading}
                 className="flex-1 px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-sm rounded transition-colors disabled:opacity-50"
               >
-                {epicLoading ? "Syncing..." : "Sync with GitHub"}
+                {epicLoading ? "Syncing..." : "Sync Status"}
+              </button>
+              <button
+                onClick={handleUpdateEpicOnGithub}
+                disabled={epicLoading}
+                className="flex-1 px-4 py-2 bg-green-500/20 hover:bg-green-500/30 text-green-400 text-sm rounded transition-colors disabled:opacity-50"
+                title="Update the Epic issue on GitHub with current phase status"
+              >
+                Update Epic Issue
               </button>
               <button
                 onClick={() => resetForm(true)}
                 className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 text-sm rounded transition-colors"
               >
-                Unlink Epic
+                Unlink
               </button>
             </>
           )}

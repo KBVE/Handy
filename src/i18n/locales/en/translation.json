@@ -909,6 +909,32 @@
         "recreate": "Session should be recreated"
       }
     },
+    "epicMonitor": {
+      "title": "Epic Monitor",
+      "linkHint": "Link an Epic to enable monitoring",
+      "watching": "Watching for completions...",
+      "description": "Supervisor for Epic sub-agents",
+      "startMonitoring": "Start Monitoring",
+      "stop": "Stop",
+      "check": "Check",
+      "checkNow": "Check now",
+      "started": "Epic Monitor Started",
+      "startedMessage": "Checking every 30s",
+      "stopped": "Epic Monitor Stopped",
+      "inProgress": "In Progress",
+      "ready": "Ready",
+      "completed": "Completed",
+      "thisSession": "This Session",
+      "autoUpdateGithub": "Auto-update Epic issue on GitHub when sub-issues complete",
+      "lastCheck": "Last check: {{time}}",
+      "activeAgents": "Active Agents",
+      "phases": "Phases",
+      "phaseNumber": "Phase {{number}}",
+      "markComplete": "Mark Complete",
+      "phaseUpdated": "Phase Updated",
+      "phaseUpdatedMessage": "Phase {{phase}} marked as {{status}}",
+      "phaseUpdateFailed": "Failed to update phase status"
+    },
     "worktrees": {
       "title": "Git Worktrees",
       "description": "Isolated development environments for parallel agent work",

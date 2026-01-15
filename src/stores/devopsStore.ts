@@ -10,6 +10,14 @@ import {
   EpicRecoveryInfo,
 } from "@/bindings";
 
+// Epic Monitor state for supervisor functionality
+export interface EpicMonitorState {
+  isMonitoring: boolean;
+  lastCheck: Date | null;
+  completedSinceStart: number;
+  autoUpdateGithub: boolean;
+}
+
 interface DevOpsStore {
   // Agent state
   agents: AgentStatus[];
@@ -27,6 +35,10 @@ interface DevOpsStore {
   activeEpic: ActiveEpicState | null;
   epicLoading: boolean;
   epicError: string | null;
+
+  // Epic Monitor state (supervisor for sub-agents)
+  epicMonitor: EpicMonitorState;
+  epicMonitorChecking: boolean;
 
   // Current machine ID
   currentMachineId: string;
@@ -59,6 +71,14 @@ interface DevOpsStore {
   setActiveEpicFromRecovery: (recovery: EpicRecoveryInfo) => Promise<void>;
   syncActiveEpic: () => Promise<void>;
   clearActiveEpic: (archive?: boolean) => Promise<void>;
+  markPhaseStatus: (phaseNumber: number, status: string) => Promise<void>;
+
+  // Epic Monitor actions
+  startEpicMonitoring: () => void;
+  stopEpicMonitoring: () => void;
+  checkEpicCompletions: () => Promise<void>;
+  setEpicMonitorAutoUpdate: (enabled: boolean) => void;
+  incrementCompletedCount: (count?: number) => void;
 
   // Internal setters
   setAgents: (agents: AgentStatus[]) => void;
@@ -73,8 +93,11 @@ interface DevOpsStore {
   // Interval IDs for cleanup
   _agentRefreshInterval: number | null;
   _sessionRefreshInterval: number | null;
+  _epicMonitorInterval: number | null;
+  _previousSubIssueStates: Map<number, string>;
   _setAgentRefreshInterval: (id: number | null) => void;
   _setSessionRefreshInterval: (id: number | null) => void;
+  _setEpicMonitorInterval: (id: number | null) => void;
 }
 
 export const useDevOpsStore = create<DevOpsStore>()(
@@ -95,6 +118,15 @@ export const useDevOpsStore = create<DevOpsStore>()(
     epicLoading: false,
     epicError: null,
 
+    // Epic Monitor state
+    epicMonitor: {
+      isMonitoring: false,
+      lastCheck: null,
+      completedSinceStart: 0,
+      autoUpdateGithub: true,
+    },
+    epicMonitorChecking: false,
+
     currentMachineId: "",
 
     agentFilterMode: "all",
@@ -105,6 +137,8 @@ export const useDevOpsStore = create<DevOpsStore>()(
 
     _agentRefreshInterval: null,
     _sessionRefreshInterval: null,
+    _epicMonitorInterval: null,
+    _previousSubIssueStates: new Map(),
 
     // Internal setters
     setAgents: (agents) => set({ agents }),
@@ -118,6 +152,7 @@ export const useDevOpsStore = create<DevOpsStore>()(
     setAgentFilterMode: (agentFilterMode) => set({ agentFilterMode }),
     _setAgentRefreshInterval: (id) => set({ _agentRefreshInterval: id }),
     _setSessionRefreshInterval: (id) => set({ _sessionRefreshInterval: id }),
+    _setEpicMonitorInterval: (id) => set({ _epicMonitorInterval: id }),
 
     // Refresh agents from backend
     refreshAgents: async (showLoading = false) => {
@@ -389,6 +424,8 @@ export const useDevOpsStore = create<DevOpsStore>()(
       try {
         await commands.clearActiveEpicState(archive);
         set({ activeEpic: null });
+        // Also stop monitoring when Epic is cleared
+        get().stopEpicMonitoring();
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
         set({ epicError: errorMsg });
@@ -396,6 +433,161 @@ export const useDevOpsStore = create<DevOpsStore>()(
       } finally {
         set({ epicLoading: false });
       }
+    },
+
+    // Mark a phase status (e.g., mark as completed for manual phases)
+    markPhaseStatus: async (phaseNumber: number, status: string) => {
+      const { activeEpic, syncActiveEpic } = get();
+      if (!activeEpic) {
+        console.error("No active Epic to mark phase status");
+        return;
+      }
+
+      set({ epicLoading: true, epicError: null });
+      try {
+        const result = await commands.markEpicPhaseStatus(
+          activeEpic.tracking_repo,
+          activeEpic.epic_number,
+          phaseNumber,
+          status
+        );
+        if (result.status === "error") {
+          set({ epicError: result.error });
+          return;
+        }
+        // Sync to get the updated state
+        await syncActiveEpic();
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        set({ epicError: errorMsg });
+        console.error("Failed to mark phase status:", err);
+      } finally {
+        set({ epicLoading: false });
+      }
+    },
+
+    // Start Epic monitoring (supervisor mode)
+    startEpicMonitoring: () => {
+      const { activeEpic, _epicMonitorInterval, checkEpicCompletions } = get();
+      if (!activeEpic || _epicMonitorInterval !== null) return;
+
+      // Initialize previous states from current sub-issues
+      const previousStates = new Map<number, string>();
+      for (const subIssue of activeEpic.sub_issues) {
+        previousStates.set(subIssue.issue_number, subIssue.state);
+      }
+
+      set({
+        _previousSubIssueStates: previousStates,
+        epicMonitor: {
+          ...get().epicMonitor,
+          isMonitoring: true,
+          completedSinceStart: 0,
+        },
+      });
+
+      // Do an immediate check
+      checkEpicCompletions();
+
+      // Start polling interval (30 seconds)
+      const intervalId = window.setInterval(checkEpicCompletions, 30000);
+      get()._setEpicMonitorInterval(intervalId);
+    },
+
+    // Stop Epic monitoring
+    stopEpicMonitoring: () => {
+      const { _epicMonitorInterval, _setEpicMonitorInterval } = get();
+
+      if (_epicMonitorInterval !== null) {
+        clearInterval(_epicMonitorInterval);
+        _setEpicMonitorInterval(null);
+      }
+
+      set({
+        epicMonitor: {
+          ...get().epicMonitor,
+          isMonitoring: false,
+        },
+      });
+    },
+
+    // Check for Epic completions
+    checkEpicCompletions: async () => {
+      const { activeEpic, epicMonitor, _previousSubIssueStates, syncActiveEpic } = get();
+      if (!activeEpic) return;
+
+      set({ epicMonitorChecking: true });
+      try {
+        // Sync with GitHub to get latest status
+        await syncActiveEpic();
+
+        // Get the updated state
+        const updatedEpic = get().activeEpic;
+        if (!updatedEpic) return;
+
+        // Check each sub-issue for state changes
+        let newCompletions = 0;
+        for (const subIssue of updatedEpic.sub_issues) {
+          const previousState = _previousSubIssueStates.get(subIssue.issue_number);
+
+          // If state changed to closed, it's completed
+          if (previousState && previousState !== "closed" && subIssue.state === "closed") {
+            newCompletions++;
+
+            // Call the completion handler if auto-update is enabled
+            if (epicMonitor.autoUpdateGithub) {
+              try {
+                await commands.onPipelineItemComplete(subIssue.issue_number, true);
+              } catch (err) {
+                console.error("Failed to handle completion:", err);
+              }
+            }
+          }
+
+          // Update the reference
+          _previousSubIssueStates.set(subIssue.issue_number, subIssue.state);
+        }
+
+        if (newCompletions > 0) {
+          set({
+            epicMonitor: {
+              ...get().epicMonitor,
+              completedSinceStart: get().epicMonitor.completedSinceStart + newCompletions,
+            },
+          });
+        }
+
+        set({
+          epicMonitor: {
+            ...get().epicMonitor,
+            lastCheck: new Date(),
+          },
+        });
+      } catch (err) {
+        console.error("Monitor check failed:", err);
+      } finally {
+        set({ epicMonitorChecking: false });
+      }
+    },
+
+    // Toggle auto-update GitHub setting
+    setEpicMonitorAutoUpdate: (enabled: boolean) => {
+      set({
+        epicMonitor: {
+          ...get().epicMonitor,
+          autoUpdateGithub: enabled,
+        },
+      });
+    },
+
+    // Increment completed count (for external use)
+    incrementCompletedCount: (count = 1) => {
+      set({
+        epicMonitor: {
+          ...get().epicMonitor,
+          completedSinceStart: get().epicMonitor.completedSinceStart + count,
+        },
+      });
     },
 
     // Initialize store and start polling
@@ -441,7 +633,7 @@ export const useDevOpsStore = create<DevOpsStore>()(
 
     // Cleanup intervals
     cleanup: () => {
-      const { _agentRefreshInterval, _sessionRefreshInterval } = get();
+      const { _agentRefreshInterval, _sessionRefreshInterval, _epicMonitorInterval } = get();
 
       if (_agentRefreshInterval !== null) {
         clearInterval(_agentRefreshInterval);
@@ -451,6 +643,11 @@ export const useDevOpsStore = create<DevOpsStore>()(
       if (_sessionRefreshInterval !== null) {
         clearInterval(_sessionRefreshInterval);
         set({ _sessionRefreshInterval: null });
+      }
+
+      if (_epicMonitorInterval !== null) {
+        clearInterval(_epicMonitorInterval);
+        set({ _epicMonitorInterval: null });
       }
     },
   })),

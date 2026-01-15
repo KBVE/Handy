@@ -3,9 +3,41 @@
 //! Uses the `gh` CLI to interact with GitHub issues, providing
 //! task queue functionality for coding agents.
 
+use once_cell::sync::Lazy;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::process::Command;
+
+/// Regex patterns for sanitizing sensitive data from content before posting to GitHub.
+static SENSITIVE_PATTERNS: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)(sk-ant-[a-zA-Z0-9\-_]+|ghp_[a-zA-Z0-9]+|gho_[a-zA-Z0-9]+|github_pat_[a-zA-Z0-9_]+|ANTHROPIC_API_KEY=[^\s]+|GH_TOKEN=[^\s]+|GITHUB_TOKEN=[^\s]+|Bearer\s+[a-zA-Z0-9\-_.]+)").unwrap()
+});
+
+/// Sanitize content before posting to GitHub issues or comments.
+///
+/// This removes sensitive data that could leak credentials:
+/// - Anthropic API keys (sk-ant-*)
+/// - GitHub tokens (ghp_*, gho_*, github_pat_*)
+/// - Environment variable assignments with sensitive values
+/// - Bearer tokens
+/// - Home directory paths (replaced with ~)
+///
+/// This function should be called on any content derived from error messages,
+/// logs, or other system output before posting to GitHub.
+pub fn sanitize_for_github(content: &str) -> String {
+    // Redact known sensitive patterns
+    let sanitized = SENSITIVE_PATTERNS.replace_all(content, "[REDACTED]");
+
+    // Replace home directory with ~ to avoid leaking username
+    if let Ok(home) = std::env::var("HOME") {
+        if !home.is_empty() {
+            return sanitized.replace(&home, "~");
+        }
+    }
+
+    sanitized.to_string()
+}
 
 /// GitHub authentication status.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]

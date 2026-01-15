@@ -18,9 +18,43 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::process::Command;
+use regex::Regex;
+use once_cell::sync::Lazy;
 
 /// Anthropic's official devcontainer feature for Claude Code
 const CLAUDE_DEVCONTAINER_FEATURE: &str = "ghcr.io/anthropics/devcontainer-features/claude-code:1.0";
+
+/// Regex patterns for sanitizing sensitive data from error messages and logs
+static SENSITIVE_PATTERNS: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)(sk-ant-[a-zA-Z0-9\-_]+|ghp_[a-zA-Z0-9]+|gho_[a-zA-Z0-9]+|github_pat_[a-zA-Z0-9_]+|ANTHROPIC_API_KEY=[^\s]+|GH_TOKEN=[^\s]+|GITHUB_TOKEN=[^\s]+|Bearer\s+[a-zA-Z0-9\-_.]+)").unwrap()
+});
+
+/// Sanitize a string to remove sensitive credentials before logging or displaying.
+///
+/// This removes:
+/// - Anthropic API keys (sk-ant-*)
+/// - GitHub tokens (ghp_*, gho_*, github_pat_*)
+/// - Environment variable assignments with sensitive values
+/// - Bearer tokens
+/// - Home directory paths (replaced with ~)
+pub fn sanitize_sensitive_data(content: &str) -> String {
+    // First, redact known sensitive patterns
+    let sanitized = SENSITIVE_PATTERNS.replace_all(content, "[REDACTED]");
+
+    // Replace home directory with ~ to avoid leaking username
+    if let Ok(home) = std::env::var("HOME") {
+        if !home.is_empty() {
+            return sanitized.replace(&home, "~");
+        }
+    }
+
+    sanitized.to_string()
+}
+
+/// Sanitize Docker command output for safe display/logging
+fn sanitize_docker_error(stderr: &str) -> String {
+    sanitize_sensitive_data(stderr)
+}
 
 /// Default Docker image for direct Docker mode (Node.js based for Claude Code CLI)
 const DEFAULT_AGENT_IMAGE: &str = "node:20-bookworm";
@@ -291,6 +325,30 @@ pub fn spawn_sandbox(config: &SandboxConfig) -> Result<SandboxResult, String> {
         "/workspace".to_string(),
     ];
 
+    // Mount auth configs for Claude Code and GitHub CLI (read-only)
+    if let Ok(home) = std::env::var("HOME") {
+        // Claude Code auth: ~/.claude.json (OAuth config)
+        let claude_json = format!("{}/.claude.json", home);
+        if std::path::Path::new(&claude_json).exists() {
+            args.push("-v".to_string());
+            args.push(format!("{}:/root/.claude.json:ro", claude_json));
+        }
+
+        // Claude Code data directory: ~/.claude/ (session data, etc.)
+        let claude_dir = format!("{}/.claude", home);
+        if std::path::Path::new(&claude_dir).exists() {
+            args.push("-v".to_string());
+            args.push(format!("{}:/root/.claude:ro", claude_dir));
+        }
+
+        // GitHub CLI auth: ~/.config/gh/ (hosts.yml with tokens)
+        let gh_dir = format!("{}/.config/gh", home);
+        if std::path::Path::new(&gh_dir).exists() {
+            args.push("-v".to_string());
+            args.push(format!("{}:/root/.config/gh:ro", gh_dir));
+        }
+    }
+
     // Add resource limits
     if let Some(ref mem) = config.memory_limit {
         args.push("-m".to_string());
@@ -342,6 +400,16 @@ pub fn spawn_sandbox(config: &SandboxConfig) -> Result<SandboxResult, String> {
     args.push("-c".to_string());
     args.push(agent_cmd);
 
+    // Log the docker command (sanitized - hide sensitive env vars)
+    let safe_args: Vec<String> = args.iter().map(|arg| {
+        if arg.contains("GH_TOKEN=") || arg.contains("GITHUB_TOKEN=") || arg.contains("ANTHROPIC_API_KEY=") {
+            "[REDACTED_ENV_VAR]".to_string()
+        } else {
+            arg.clone()
+        }
+    }).collect();
+    log::debug!("Spawning sandbox container: docker {}", safe_args.join(" "));
+
     // Run docker command
     let output = Command::new("docker")
         .args(&args)
@@ -350,7 +418,7 @@ pub fn spawn_sandbox(config: &SandboxConfig) -> Result<SandboxResult, String> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Docker failed: {}", stderr));
+        return Err(format!("Docker failed: {}", sanitize_docker_error(&stderr)));
     }
 
     let container_id = String::from_utf8_lossy(&output.stdout).trim().to_string();

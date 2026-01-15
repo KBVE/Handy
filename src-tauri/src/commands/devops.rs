@@ -928,6 +928,24 @@ pub async fn load_epic(
     crate::devops::operations::load_epic(repo, epic_number).await
 }
 
+/// Update the Epic issue on GitHub with current phase status.
+///
+/// Call this after phases complete to keep the Epic issue body in sync.
+#[tauri::command]
+#[specta::specta]
+pub async fn update_epic_phase_status_on_github(
+    epic_repo: String,
+    epic_number: u32,
+    phase_statuses: Vec<crate::devops::operations::PhaseStatus>,
+) -> Result<(), String> {
+    crate::devops::operations::update_epic_phase_status_on_github(
+        &epic_repo,
+        epic_number,
+        &phase_statuses,
+    )
+    .await
+}
+
 /// Load an existing epic with full recovery information
 ///
 /// Fetches the epic, all its sub-issues, and determines what work remains.
@@ -939,6 +957,22 @@ pub async fn load_epic_for_recovery(
     epic_number: u32,
 ) -> Result<crate::devops::operations::EpicRecoveryInfo, String> {
     crate::devops::operations::load_epic_for_recovery(repo, epic_number).await
+}
+
+/// Manually mark a phase's status on GitHub.
+///
+/// Use this for phases that were completed manually (without sub-issues)
+/// or for recovery when the Epic body status doesn't match actual state.
+#[tauri::command]
+#[specta::specta]
+pub async fn mark_epic_phase_status(
+    epic_repo: String,
+    epic_number: u32,
+    phase_number: u32,
+    new_status: String,
+) -> Result<(), String> {
+    crate::devops::operations::mark_phase_status(&epic_repo, epic_number, phase_number, &new_status)
+        .await
 }
 
 // ===== Epic State Persistence Commands =====
@@ -1006,6 +1040,22 @@ pub fn update_epic_sub_issue_agent(
         session_name.as_deref(),
         agent_type.as_deref(),
     )
+}
+
+/// Handle pipeline item completion and optionally update Epic on GitHub.
+///
+/// Call this when a sub-issue is completed (PR merged, issue closed).
+/// It syncs Epic state and optionally updates the Epic issue on GitHub
+/// with the new phase progress.
+#[tauri::command]
+#[specta::specta]
+pub async fn on_pipeline_item_complete(
+    app: AppHandle,
+    issue_number: u32,
+    update_github: bool,
+) -> Result<(), String> {
+    crate::devops::orchestration::on_pipeline_item_complete(&app, issue_number, update_github)
+        .await
 }
 
 // ============================================================================

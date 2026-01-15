@@ -122,6 +122,7 @@ pub fn assign_issue_to_agent(
     let issue = github::get_issue(&config.tracking_repo, config.issue_number)?;
 
     // 2. Create spawn config
+    let settings = crate::settings::get_settings(app);
     let spawn_config = SpawnConfig {
         repo: config.work_repo.clone(),
         issue_number: config.issue_number,
@@ -129,7 +130,7 @@ pub fn assign_issue_to_agent(
         session_name: None,
         worktree_prefix: Some("handy".to_string()),
         working_labels: config.start_labels.clone(),
-        use_sandbox: false, // TODO: Get from app settings
+        use_sandbox: settings.sandbox_enabled,
         sandbox_ports: vec![], // Auto-detect ports from project
     };
 
@@ -202,14 +203,15 @@ pub fn skip_issue(app: &AppHandle, config: &SkipIssueConfig) -> Result<PipelineI
 
     github::update_labels(&config.repo, config.issue_number, add_labels, remove_labels)?;
 
-    // 4. Add comment if reason provided
+    // 4. Add comment if reason provided (sanitized to prevent credential leaks)
     if let Some(reason) = &config.reason {
+        let sanitized_reason = github::sanitize_for_github(reason);
         let comment = format!(
             "🚫 **Issue Skipped**\n\n\
             This issue was skipped by the automation system.\n\n\
             **Reason:** {}\n\n\
             The issue has been marked with `agent-skipped` label.",
-            reason
+            sanitized_reason
         );
         let _ = github::add_comment(&config.repo, config.issue_number, &comment);
     }
@@ -591,12 +593,61 @@ pub fn set_active_epic(app: &AppHandle, epic_info: &EpicInfo) -> ActiveEpicState
     active
 }
 
+/// Extract phase status from the Epic issue body.
+/// Returns a map from phase number to status.
+fn extract_phase_statuses_from_body(body: &str) -> std::collections::HashMap<u32, TrackedPhaseStatus> {
+    let mut statuses = std::collections::HashMap::new();
+    let mut current_phase: Option<u32> = None;
+
+    for line in body.lines() {
+        let trimmed = line.trim();
+
+        // Look for phase headers: "### Phase N: Name"
+        if trimmed.starts_with("### Phase ") {
+            let after_phase = trimmed.trim_start_matches("### Phase ");
+            if let Some(num_end) = after_phase.find(':') {
+                if let Ok(num) = after_phase[..num_end].trim().parse::<u32>() {
+                    current_phase = Some(num);
+                }
+            }
+            continue;
+        }
+
+        // Look for status line: "**Status**: ✅ Complete" or similar
+        if trimmed.starts_with("**Status**:") {
+            if let Some(phase_num) = current_phase {
+                let status_text = trimmed.trim_start_matches("**Status**:").trim();
+                let status = if status_text.contains("Complete") || status_text.contains("✅") {
+                    TrackedPhaseStatus::Completed
+                } else if status_text.contains("In Progress") || status_text.contains("🔄") {
+                    TrackedPhaseStatus::InProgress
+                } else if status_text.contains("Skipped") || status_text.contains("⏭️") {
+                    TrackedPhaseStatus::Skipped
+                } else {
+                    TrackedPhaseStatus::NotStarted
+                };
+                statuses.insert(phase_num, status);
+            }
+        }
+
+        // Reset phase when we hit a new top-level section
+        if trimmed.starts_with("## ") && !trimmed.starts_with("### ") {
+            current_phase = None;
+        }
+    }
+
+    statuses
+}
+
 /// Set the active Epic from recovery info (more complete data).
 pub fn set_active_epic_from_recovery(
     app: &AppHandle,
     recovery: &EpicRecoveryInfo,
 ) -> ActiveEpicState {
     let mut state = load_epic_state(app);
+
+    // Extract phase statuses from the Epic body (for manually completed phases)
+    let body_statuses = extract_phase_statuses_from_body(&recovery.epic_body);
 
     // Group sub-issues by phase
     let mut phase_issues: std::collections::HashMap<u32, Vec<&ExistingSubIssue>> =
@@ -619,16 +670,29 @@ pub fn set_active_epic_from_recovery(
             let completed = phase_subs.iter().filter(|s| s.state == "closed").count();
             let in_progress = phase_subs.iter().any(|s| s.has_agent_working || s.state == "open");
 
-            TrackedPhase {
-                phase_number: phase_num,
-                name: phase.name.clone(),
-                status: if completed == phase_subs.len() && !phase_subs.is_empty() {
+            // Determine status:
+            // 1. If there are sub-issues, use their status
+            // 2. If no sub-issues, check the Epic body for status (handles manual completions)
+            let status = if !phase_subs.is_empty() {
+                if completed == phase_subs.len() {
                     TrackedPhaseStatus::Completed
                 } else if in_progress {
                     TrackedPhaseStatus::InProgress
                 } else {
                     TrackedPhaseStatus::NotStarted
-                },
+                }
+            } else {
+                // No sub-issues - check Epic body for status
+                body_statuses
+                    .get(&phase_num)
+                    .cloned()
+                    .unwrap_or(TrackedPhaseStatus::NotStarted)
+            };
+
+            TrackedPhase {
+                phase_number: phase_num,
+                name: phase.name.clone(),
+                status,
                 sub_issues: phase_subs.iter().map(|s| s.issue_number).collect(),
                 completed_count: completed,
                 total_count: phase_subs.len(),
@@ -742,6 +806,83 @@ pub async fn sync_active_epic(app: &AppHandle) -> Result<Option<ActiveEpicState>
     } else {
         Ok(None)
     }
+}
+
+/// Handle pipeline item completion and update Epic if applicable.
+///
+/// This should be called when a pipeline item transitions to Completed/Failed/Skipped.
+/// It will:
+/// 1. Update the Epic's sub-issue tracking
+/// 2. Update phase status if all sub-issues in a phase are complete
+/// 3. Optionally update the Epic issue on GitHub
+pub async fn on_pipeline_item_complete(
+    app: &AppHandle,
+    issue_number: u32,
+    update_github: bool,
+) -> Result<(), String> {
+    let state = load_epic_state(app);
+
+    if let Some(active) = &state.active_epic {
+        // Check if this issue belongs to the active Epic
+        let belongs_to_epic = active
+            .sub_issues
+            .iter()
+            .any(|s| s.issue_number == issue_number);
+
+        if belongs_to_epic {
+            log::info!(
+                "Pipeline item #{} completed, belongs to Epic #{}",
+                issue_number,
+                active.epic_number
+            );
+
+            // Sync Epic state with GitHub to get latest status
+            let updated = sync_active_epic(app).await?;
+
+            // Optionally update the Epic issue on GitHub with new phase status
+            if update_github {
+                if let Some(updated_state) = updated {
+                    // Build phase statuses from the updated state
+                    let phase_statuses: Vec<super::operations::PhaseStatus> = updated_state
+                        .phases
+                        .iter()
+                        .map(|p| super::operations::PhaseStatus {
+                            phase_number: p.phase_number,
+                            phase_name: p.name.clone(),
+                            approach: match p.status {
+                                TrackedPhaseStatus::Completed => "manual".to_string(),
+                                _ => "agent-assisted".to_string(),
+                            },
+                            total_issues: p.total_count as u32,
+                            completed_issues: p.completed_count as u32,
+                            in_progress_issues: 0, // Would need to calculate from sub_issues
+                            status: match p.status {
+                                TrackedPhaseStatus::Completed => "completed".to_string(),
+                                TrackedPhaseStatus::InProgress => "in_progress".to_string(),
+                                TrackedPhaseStatus::NotStarted => "not_started".to_string(),
+                                TrackedPhaseStatus::Skipped => "skipped".to_string(),
+                            },
+                        })
+                        .collect();
+
+                    // Update Epic issue on GitHub
+                    super::operations::update_epic_phase_status_on_github(
+                        &updated_state.tracking_repo,
+                        updated_state.epic_number,
+                        &phase_statuses,
+                    )
+                    .await?;
+
+                    log::info!(
+                        "Updated Epic #{} on GitHub with phase status",
+                        updated_state.epic_number
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

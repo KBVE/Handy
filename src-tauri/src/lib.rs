@@ -608,6 +608,8 @@ pub fn run() {
         commands::devops::get_epic_phase_status,
         commands::devops::load_epic,
         commands::devops::load_epic_for_recovery,
+        commands::devops::update_epic_phase_status_on_github,
+        commands::devops::mark_epic_phase_status,
         // Epic state persistence commands
         commands::devops::get_active_epic_state,
         commands::devops::set_active_epic_state,
@@ -615,6 +617,7 @@ pub fn run() {
         commands::devops::clear_active_epic_state,
         commands::devops::sync_active_epic_state,
         commands::devops::update_epic_sub_issue_agent,
+        commands::devops::on_pipeline_item_complete,
         // Docker sandbox commands
         commands::devops::is_docker_available,
         commands::devops::spawn_sandbox,

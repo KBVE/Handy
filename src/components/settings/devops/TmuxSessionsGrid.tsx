@@ -28,6 +28,7 @@ import {
   RotateCcw,
   AlertTriangle,
 } from "lucide-react";
+import { EpicMonitor } from "./EpicMonitor";
 
 const SUPPORT_SESSION_NAME = "handy-agent-support-worker";
 
@@ -874,6 +875,9 @@ export const TmuxSessionsGrid: React.FC = () => {
             </button>
           </div>
         )}
+
+        {/* Epic Monitor - Supervisor for sub-agents */}
+        <EpicMonitor />
 
         {/* Header */}
         <div className="flex items-center justify-between">

@@ -1625,11 +1625,12 @@ async closeGithubPr(repo: string, number: number, comment: string | null) : Prom
 /**
  * Spawn a new agent to work on an issue.
  * 
- * Creates a worktree, tmux session, and updates the issue with metadata.
+ * Creates a worktree, tmux session (or Docker container if sandbox enabled),
+ * and updates the issue with metadata.
  */
-async spawnAgent(repo: string, issueNumber: number, agentType: string, repoPath: string, sessionName: string | null, worktreePrefix: string | null, workingLabels: string[] | null) : Promise<Result<SpawnResult, string>> {
+async spawnAgent(repo: string, issueNumber: number, agentType: string, repoPath: string, sessionName: string | null, worktreePrefix: string | null, workingLabels: string[] | null, useSandbox: boolean | null) : Promise<Result<SpawnResult, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("spawn_agent", { repo, issueNumber, agentType, repoPath, sessionName, worktreePrefix, workingLabels }) };
+    return { status: "ok", data: await TAURI_INVOKE("spawn_agent", { repo, issueNumber, agentType, repoPath, sessionName, worktreePrefix, workingLabels, useSandbox }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -1882,6 +1883,33 @@ async loadEpicForRecovery(repo: string, epicNumber: number) : Promise<Result<Epi
 }
 },
 /**
+ * Update the Epic issue on GitHub with current phase status.
+ * 
+ * Call this after phases complete to keep the Epic issue body in sync.
+ */
+async updateEpicPhaseStatusOnGithub(epicRepo: string, epicNumber: number, phaseStatuses: PhaseStatus[]) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_epic_phase_status_on_github", { epicRepo, epicNumber, phaseStatuses }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Manually mark a phase's status on GitHub.
+ * 
+ * Use this for phases that were completed manually (without sub-issues)
+ * or for recovery when the Epic body status doesn't match actual state.
+ */
+async markEpicPhaseStatus(epicRepo: string, epicNumber: number, phaseNumber: number, newStatus: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("mark_epic_phase_status", { epicRepo, epicNumber, phaseNumber, newStatus }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Get the currently active Epic state (persisted across app restarts).
  */
 async getActiveEpicState() : Promise<ActiveEpicState | null> {
@@ -1922,6 +1950,21 @@ async syncActiveEpicState() : Promise<Result<ActiveEpicState | null, string>> {
 async updateEpicSubIssueAgent(issueNumber: number, sessionName: string | null, agentType: string | null) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("update_epic_sub_issue_agent", { issueNumber, sessionName, agentType }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Handle pipeline item completion and optionally update Epic on GitHub.
+ * 
+ * Call this when a sub-issue is completed (PR merged, issue closed).
+ * It syncs Epic state and optionally updates the Epic issue on GitHub
+ * with the new phase progress.
+ */
+async onPipelineItemComplete(issueNumber: number, updateGithub: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("on_pipeline_item_complete", { issueNumber, updateGithub }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -2044,6 +2087,42 @@ async startDevcontainer(worktreePath: string) : Promise<Result<string, string>> 
 async execInDevcontainer(worktreePath: string, command: string) : Promise<Result<string, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("exec_in_devcontainer", { worktreePath, command }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Ensure the shared agent network exists for inter-container communication
+ * 
+ * Creates the 'handy-agents' Docker network if it doesn't exist.
+ * Agents on this network can communicate using container names as hostnames.
+ */
+async ensureAgentNetwork() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("ensure_agent_network") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Get network information for a sandboxed agent
+ * 
+ * Returns the allocated port range and network hostname for the agent.
+ * Use this to know which ports are available and how other agents can reach this one.
+ */
+async getAgentNetworkInfo(issueNumber: number, containerPorts: number[]) : Promise<AgentNetworkInfo> {
+    return await TAURI_INVOKE("get_agent_network_info", { issueNumber, containerPorts });
+},
+/**
+ * List all containers on the agent network
+ * 
+ * Returns container names that can be used as hostnames for inter-container communication.
+ */
+async listNetworkContainers() : Promise<Result<string[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_network_containers") };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -2313,6 +2392,26 @@ machine_id: string;
  * ISO timestamp when session started
  */
 started_at: string }
+/**
+ * Information about an agent's network configuration
+ */
+export type AgentNetworkInfo = { 
+/**
+ * The Docker network name
+ */
+network_name: string; 
+/**
+ * Container hostname (can be used by other containers to connect)
+ */
+container_hostname: string; 
+/**
+ * Allocated host port range (base, end)
+ */
+host_port_range: [number, number]; 
+/**
+ * Port mappings from container port to host port
+ */
+port_mappings: ([number, number])[] }
 /**
  * Result of spawning an agent
  */
@@ -2658,6 +2757,10 @@ export type EpicRecoveryInfo = {
  * The epic info
  */
 epic: EpicInfo; 
+/**
+ * The raw Epic issue body (for reading phase statuses)
+ */
+epic_body: string; 
 /**
  * Existing sub-issues for this epic
  */
@@ -3577,13 +3680,21 @@ issue: GitHubIssue;
  */
 worktree: WorktreeCreateResult; 
 /**
- * The tmux session name
+ * The tmux session name (or container name if sandboxed)
  */
 session_name: string; 
 /**
  * Machine ID where agent is running
  */
-machine_id: string }
+machine_id: string; 
+/**
+ * Whether agent is running in Docker sandbox
+ */
+is_sandboxed?: boolean; 
+/**
+ * Container ID if sandboxed
+ */
+container_id: string | null }
 /**
  * Information about a spawned agent
  */

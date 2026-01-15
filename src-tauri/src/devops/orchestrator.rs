@@ -6,9 +6,11 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
+use super::docker;
 use super::github::{self, GitHubIssue, IssueAgentMetadata};
-use super::tmux::{self, AgentMetadata};
+use super::tmux::{self, AgentMetadata, PortMapping, SandboxedAgentConfig};
 use super::worktree::{self, WorktreeConfig, WorktreeCreateResult};
+use std::path::Path;
 
 /// Configuration for spawning an agent.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -25,6 +27,13 @@ pub struct SpawnConfig {
     pub worktree_prefix: Option<String>,
     /// Labels to add when agent starts working
     pub working_labels: Vec<String>,
+    /// Whether to run in Docker sandbox (if available)
+    #[serde(default)]
+    pub use_sandbox: bool,
+    /// Optional manual port mappings (host:container format, e.g., ["3000:3000", "8080:80"])
+    /// If not specified, ports are auto-detected from project files
+    #[serde(default)]
+    pub sandbox_ports: Vec<String>,
 }
 
 /// Result of spawning an agent.
@@ -34,10 +43,15 @@ pub struct SpawnResult {
     pub issue: GitHubIssue,
     /// The created worktree
     pub worktree: WorktreeCreateResult,
-    /// The tmux session name
+    /// The tmux session name (or container name if sandboxed)
     pub session_name: String,
     /// Machine ID where agent is running
     pub machine_id: String,
+    /// Whether agent is running in Docker sandbox
+    #[serde(default)]
+    pub is_sandboxed: bool,
+    /// Container ID if sandboxed
+    pub container_id: Option<String>,
 }
 
 /// Status of an active agent.
@@ -96,9 +110,212 @@ pub fn get_current_machine_id() -> String {
         .unwrap_or_else(|_| "unknown".to_string())
 }
 
+/// Common development ports by project type
+const COMMON_PORTS: &[(u16, &str)] = &[
+    (3000, "React/Next.js/Node.js"),
+    (3001, "React dev server alternate"),
+    (4200, "Angular"),
+    (5000, "Flask/Python"),
+    (5173, "Vite"),
+    (5174, "Vite HMR"),
+    (8000, "Django/FastAPI"),
+    (8080, "Generic web server"),
+    (8081, "Metro bundler (React Native)"),
+    (9000, "PHP-FPM"),
+    (19000, "Expo"),
+    (19001, "Expo DevTools"),
+    (24678, "Vite HMR WebSocket"),
+];
+
+/// Parse port mapping strings into PortMapping structs.
+///
+/// Accepts formats:
+/// - "3000" - same port on host and container
+/// - "3000:3000" - explicit host:container
+/// - "8080:80" - different host and container ports
+/// - "3000:3000/udp" - with protocol
+fn parse_port_mappings(port_strings: &[String]) -> Vec<PortMapping> {
+    let mut ports = Vec::new();
+
+    for port_str in port_strings {
+        let port_str = port_str.trim();
+        if port_str.is_empty() {
+            continue;
+        }
+
+        // Check for protocol suffix
+        let (port_part, protocol) = if port_str.contains('/') {
+            let parts: Vec<&str> = port_str.splitn(2, '/').collect();
+            (parts[0], Some(parts.get(1).unwrap_or(&"tcp").to_string()))
+        } else {
+            (port_str, None)
+        };
+
+        // Parse host:container or just port
+        if port_part.contains(':') {
+            let parts: Vec<&str> = port_part.splitn(2, ':').collect();
+            if let (Ok(host), Ok(container)) = (parts[0].parse::<u16>(), parts[1].parse::<u16>()) {
+                ports.push(PortMapping {
+                    host_port: host,
+                    container_port: container,
+                    protocol,
+                });
+            }
+        } else if let Ok(port) = port_part.parse::<u16>() {
+            ports.push(PortMapping {
+                host_port: port,
+                container_port: port,
+                protocol,
+            });
+        }
+    }
+
+    ports
+}
+
+/// Detect common development ports based on project files.
+///
+/// This examines the worktree for common configuration files and
+/// returns appropriate port mappings for the detected project type.
+fn detect_project_ports(worktree_path: &str) -> Vec<PortMapping> {
+    let path = Path::new(worktree_path);
+    let mut ports = Vec::new();
+
+    // Check for package.json (Node.js projects)
+    let package_json = path.join("package.json");
+    if package_json.exists() {
+        if let Ok(content) = std::fs::read_to_string(&package_json) {
+            // Next.js / React
+            if content.contains("\"next\"") {
+                ports.push(PortMapping::new(3000));
+            }
+            // Vite
+            if content.contains("\"vite\"") {
+                ports.push(PortMapping::new(5173));
+                ports.push(PortMapping::new(5174)); // HMR
+                ports.push(PortMapping::new(24678)); // WebSocket
+            }
+            // Create React App
+            if content.contains("\"react-scripts\"") {
+                ports.push(PortMapping::new(3000));
+            }
+            // Angular
+            if content.contains("\"@angular/core\"") {
+                ports.push(PortMapping::new(4200));
+            }
+            // Expo (React Native)
+            if content.contains("\"expo\"") {
+                ports.push(PortMapping::new(19000));
+                ports.push(PortMapping::new(19001));
+                ports.push(PortMapping::new(8081)); // Metro
+            }
+            // Generic Node.js server
+            if ports.is_empty()
+                && (content.contains("\"express\"")
+                    || content.contains("\"fastify\"")
+                    || content.contains("\"koa\""))
+            {
+                ports.push(PortMapping::new(3000));
+            }
+        }
+    }
+
+    // Check for Python projects
+    let pyproject = path.join("pyproject.toml");
+    let requirements = path.join("requirements.txt");
+    let manage_py = path.join("manage.py");
+
+    if manage_py.exists() {
+        // Django
+        ports.push(PortMapping::new(8000));
+    } else if pyproject.exists() || requirements.exists() {
+        // Check for FastAPI or Flask
+        let check_files = [pyproject, requirements];
+        for file in &check_files {
+            if file.exists() {
+                if let Ok(content) = std::fs::read_to_string(file) {
+                    if content.contains("fastapi") || content.contains("uvicorn") {
+                        ports.push(PortMapping::new(8000));
+                        break;
+                    }
+                    if content.contains("flask") {
+                        ports.push(PortMapping::new(5000));
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // Check for Go projects
+    let go_mod = path.join("go.mod");
+    if go_mod.exists() {
+        // Go web servers commonly use 8080
+        ports.push(PortMapping::new(8080));
+    }
+
+    // Check for Rust projects with Tauri
+    let cargo_toml = path.join("Cargo.toml");
+    if cargo_toml.exists() {
+        if let Ok(content) = std::fs::read_to_string(&cargo_toml) {
+            if content.contains("tauri") {
+                // Tauri typically uses Vite or another bundler
+                ports.push(PortMapping::new(1420)); // Tauri dev server
+                ports.push(PortMapping::new(5173)); // Vite
+            }
+            // Actix/Axum/Rocket web frameworks
+            if content.contains("actix") || content.contains("axum") || content.contains("rocket")
+            {
+                ports.push(PortMapping::new(8080));
+            }
+        }
+    }
+
+    // Check for docker-compose.yml for additional ports
+    let docker_compose = path.join("docker-compose.yml");
+    let docker_compose_yaml = path.join("docker-compose.yaml");
+    for compose_file in &[docker_compose, docker_compose_yaml] {
+        if compose_file.exists() {
+            if let Ok(content) = std::fs::read_to_string(compose_file) {
+                // Simple regex-free port extraction (looks for "ports:" sections)
+                // Format: - "3000:3000" or - 3000:3000
+                for line in content.lines() {
+                    let trimmed = line.trim().trim_start_matches('-').trim();
+                    if trimmed.starts_with('"') || trimmed.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+                        let port_str = trimmed.trim_matches('"');
+                        if let Some((host, _container)) = port_str.split_once(':') {
+                            if let Ok(port) = host.parse::<u16>() {
+                                // Don't duplicate
+                                if !ports.iter().any(|p| p.host_port == port) {
+                                    ports.push(PortMapping::new(port));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Deduplicate
+    let mut seen = std::collections::HashSet::new();
+    ports.retain(|p| seen.insert(p.host_port));
+
+    log::info!(
+        "Detected {} ports for project at {}: {:?}",
+        ports.len(),
+        worktree_path,
+        ports.iter().map(|p| p.host_port).collect::<Vec<_>>()
+    );
+
+    ports
+}
+
 /// Spawn a new agent to work on an issue.
 ///
-/// This creates a worktree, tmux session, and updates the issue with metadata.
+/// This creates a worktree and a tmux session. If sandbox mode is enabled
+/// and Docker is available, the agent runs inside a Docker container
+/// within the tmux session (allowing attach/detach and visibility).
 pub fn spawn_agent(config: &SpawnConfig, repo_path: &str) -> Result<SpawnResult, String> {
     // 1. Fetch the issue to ensure it exists
     let issue = github::get_issue(&config.repo, config.issue_number)?;
@@ -126,7 +343,7 @@ pub fn spawn_agent(config: &SpawnConfig, repo_path: &str) -> Result<SpawnResult,
         .map(|h| h.to_string_lossy().to_string())
         .unwrap_or_else(|_| "unknown".to_string());
 
-    // 5. Create tmux session in the worktree
+    // 5. Create tmux session (always - for both sandboxed and non-sandboxed)
     let metadata = AgentMetadata {
         session: session_name.clone(),
         issue_ref: Some(format!("{}#{}", config.repo, config.issue_number)),
@@ -138,14 +355,45 @@ pub fn spawn_agent(config: &SpawnConfig, repo_path: &str) -> Result<SpawnResult,
     };
     tmux::create_session(&session_name, Some(&worktree.path), &metadata)?;
 
-    // 6. Start the agent in the tmux session
-    tmux::start_agent_in_session(
-        &session_name,
-        &config.agent_type,
-        &config.repo,
-        config.issue_number,
-        Some(&issue.title),
-    )?;
+    // 6. Start agent in the tmux session (sandboxed or direct)
+    let is_sandboxed = config.use_sandbox && docker::is_docker_available();
+
+    if is_sandboxed {
+        // Sandbox mode: run agent inside Docker container within tmux
+        // Use manual ports if provided, otherwise auto-detect from project files
+        let ports = if !config.sandbox_ports.is_empty() {
+            parse_port_mappings(&config.sandbox_ports)
+        } else {
+            detect_project_ports(&worktree.path)
+        };
+
+        let sandbox_config = SandboxedAgentConfig {
+            worktree_path: worktree.path.clone(),
+            memory_limit: Some("4g".to_string()),
+            cpu_limit: Some("2".to_string()),
+            auto_accept: true, // Safe in sandbox
+            ports,
+            auto_detect_ports: config.sandbox_ports.is_empty(),
+        };
+
+        tmux::start_sandboxed_agent_in_session(
+            &session_name,
+            &config.agent_type,
+            &config.repo,
+            config.issue_number,
+            Some(&issue.title),
+            &sandbox_config,
+        )?;
+    } else {
+        // Direct mode: run agent directly in tmux
+        tmux::start_agent_in_session(
+            &session_name,
+            &config.agent_type,
+            &config.repo,
+            config.issue_number,
+            Some(&issue.title),
+        )?;
+    }
 
     // 7. Add agent metadata comment to the issue
     let issue_metadata = IssueAgentMetadata {
@@ -154,7 +402,7 @@ pub fn spawn_agent(config: &SpawnConfig, repo_path: &str) -> Result<SpawnResult,
         worktree: Some(worktree.path.clone()),
         agent_type: config.agent_type.clone(),
         started_at: chrono::Utc::now().to_rfc3339(),
-        status: "working".to_string(),
+        status: if is_sandboxed { "working (sandboxed)".to_string() } else { "working".to_string() },
     };
     github::add_agent_metadata_comment(&config.repo, config.issue_number, &issue_metadata)?;
 
@@ -169,6 +417,8 @@ pub fn spawn_agent(config: &SpawnConfig, repo_path: &str) -> Result<SpawnResult,
         worktree,
         session_name,
         machine_id,
+        is_sandboxed,
+        container_id: None, // Container is managed by tmux session now
     })
 }
 
@@ -447,7 +697,37 @@ mod tests {
             session_name: None,
             worktree_prefix: None,
             working_labels: vec![],
+            use_sandbox: false,
+            sandbox_ports: vec![],
         };
         assert!(config.session_name.is_none());
+    }
+
+    #[test]
+    fn test_parse_port_mappings() {
+        // Simple port
+        let ports = parse_port_mappings(&["3000".to_string()]);
+        assert_eq!(ports.len(), 1);
+        assert_eq!(ports[0].host_port, 3000);
+        assert_eq!(ports[0].container_port, 3000);
+
+        // Host:container
+        let ports = parse_port_mappings(&["8080:80".to_string()]);
+        assert_eq!(ports.len(), 1);
+        assert_eq!(ports[0].host_port, 8080);
+        assert_eq!(ports[0].container_port, 80);
+
+        // With protocol
+        let ports = parse_port_mappings(&["53:53/udp".to_string()]);
+        assert_eq!(ports.len(), 1);
+        assert_eq!(ports[0].protocol, Some("udp".to_string()));
+
+        // Multiple
+        let ports = parse_port_mappings(&[
+            "3000".to_string(),
+            "8080:80".to_string(),
+            "5432:5432".to_string(),
+        ]);
+        assert_eq!(ports.len(), 3);
     }
 }

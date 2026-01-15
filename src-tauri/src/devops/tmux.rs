@@ -575,20 +575,138 @@ pub fn recover_all_sessions(auto_restart: bool, auto_cleanup: bool) -> Result<Ve
     Ok(results)
 }
 
-/// Build the command to start an agent based on type and context
+/// Port mapping configuration for container
+#[derive(Debug, Clone)]
+pub struct PortMapping {
+    /// Host port to bind
+    pub host_port: u16,
+    /// Container port to expose
+    pub container_port: u16,
+    /// Protocol (tcp or udp), defaults to tcp
+    pub protocol: Option<String>,
+}
+
+impl PortMapping {
+    /// Create a new port mapping (same port on host and container)
+    pub fn new(port: u16) -> Self {
+        Self {
+            host_port: port,
+            container_port: port,
+            protocol: None,
+        }
+    }
+
+    /// Create a port mapping with different host and container ports
+    pub fn mapped(host_port: u16, container_port: u16) -> Self {
+        Self {
+            host_port,
+            container_port,
+            protocol: None,
+        }
+    }
+
+    /// Format as Docker -p argument
+    pub fn to_docker_arg(&self) -> String {
+        match &self.protocol {
+            Some(proto) => format!(
+                "-p {}:{}/{}",
+                self.host_port, self.container_port, proto
+            ),
+            None => format!("-p {}:{}", self.host_port, self.container_port),
+        }
+    }
+}
+
+/// Configuration for sandboxed agent execution
+#[derive(Debug, Clone)]
+pub struct SandboxedAgentConfig {
+    /// Path to the worktree (will be mounted in container)
+    pub worktree_path: String,
+    /// Container memory limit (e.g., "4g")
+    pub memory_limit: Option<String>,
+    /// Container CPU limit (e.g., "2")
+    pub cpu_limit: Option<String>,
+    /// Whether to use --dangerously-skip-permissions (safe in sandbox)
+    pub auto_accept: bool,
+    /// Port mappings for the container (host:container)
+    pub ports: Vec<PortMapping>,
+    /// Whether to auto-detect common development ports from the project
+    pub auto_detect_ports: bool,
+}
+
+/// Build a Docker command that runs the agent inside a container
 ///
-/// Returns the shell command that should be sent to the tmux session
-/// to start the appropriate agent with the issue context.
-pub fn build_agent_command(
+/// This wraps the agent command in a Docker container with:
+/// - The worktree mounted at /workspace
+/// - GitHub and Anthropic credentials passed from environment
+/// - Resource limits applied
+fn build_sandboxed_agent_command(
     agent_type: &str,
     repo: &str,
     issue_number: u64,
     issue_title: Option<&str>,
+    config: &SandboxedAgentConfig,
 ) -> Result<String, String> {
-    // Escape the issue title for shell if provided
+    // First get the base agent command
+    let inner_command = build_agent_command_inner(agent_type, repo, issue_number, issue_title, config.auto_accept)?;
+
+    // Build docker run command
+    let container_name = format!("handy-sandbox-{}", issue_number);
+    let image = "node:20-bookworm"; // Base image with Node.js for Claude Code
+
+    let mut docker_args = vec![
+        "docker run --rm -it".to_string(),
+        format!("--name {}", container_name),
+        format!("-v {}:/workspace", config.worktree_path),
+        "-w /workspace".to_string(),
+    ];
+
+    // Add resource limits
+    if let Some(ref mem) = config.memory_limit {
+        docker_args.push(format!("-m {}", mem));
+    }
+    if let Some(ref cpu) = config.cpu_limit {
+        docker_args.push(format!("--cpus {}", cpu));
+    }
+
+    // Add port mappings
+    for port_mapping in &config.ports {
+        docker_args.push(port_mapping.to_docker_arg());
+    }
+
+    // Pass through credentials from host environment
+    docker_args.push("-e GH_TOKEN".to_string());
+    docker_args.push("-e GITHUB_TOKEN".to_string());
+    docker_args.push("-e ANTHROPIC_API_KEY".to_string());
+
+    // Add context env vars
+    docker_args.push(format!("-e HANDY_ISSUE_REF={}#{}", repo, issue_number));
+    docker_args.push(format!("-e HANDY_AGENT_TYPE={}", agent_type));
+
+    // Add image and command
+    docker_args.push(image.to_string());
+    docker_args.push("sh -c".to_string());
+
+    // Install Claude Code and run the agent command
+    let install_and_run = format!(
+        "npm install -g @anthropic/claude-code && {}",
+        inner_command
+    );
+    docker_args.push(format!("'{}'", install_and_run.replace('\'', "'\\''")));
+
+    Ok(docker_args.join(" "))
+}
+
+/// Build the inner agent command (used both directly and inside containers)
+fn build_agent_command_inner(
+    agent_type: &str,
+    repo: &str,
+    issue_number: u64,
+    issue_title: Option<&str>,
+    auto_accept: bool,
+) -> Result<String, String> {
     let title_arg = issue_title
         .map(|t| {
-            // Escape single quotes in the title
             let escaped = t.replace('\'', "'\\''");
             format!(" --title '{}'", escaped)
         })
@@ -596,45 +714,44 @@ pub fn build_agent_command(
 
     let command = match agent_type.to_lowercase().as_str() {
         "claude" => {
-            // Claude Code CLI with GitHub issue context
-            // Note: We intentionally do NOT use --dangerously-skip-permissions
-            // The agent should still require user approval for sensitive operations
-            format!(
-                "claude 'Work on GitHub issue {}#{}: Implement the requirements described in the issue. When done, commit your changes and create a PR.'",
-                repo, issue_number
-            )
+            if auto_accept {
+                // In sandbox, we can safely skip permissions
+                format!(
+                    "claude --dangerously-skip-permissions 'Work on GitHub issue {}#{}: Implement the requirements described in the issue. When done, commit your changes and create a PR.'",
+                    repo, issue_number
+                )
+            } else {
+                format!(
+                    "claude 'Work on GitHub issue {}#{}: Implement the requirements described in the issue. When done, commit your changes and create a PR.'",
+                    repo, issue_number
+                )
+            }
         }
         "aider" => {
-            // Aider with issue context in the prompt
-            // Note: --yes-always auto-confirms prompts - consider if this is desired
             format!(
                 "aider --message 'Work on GitHub issue {}#{}{}. Implement the requirements and commit when done.'",
                 repo, issue_number, title_arg
             )
         }
         "codex" | "openai" => {
-            // OpenAI Codex CLI
             format!(
                 "codex 'Implement GitHub issue {}#{}{}'",
                 repo, issue_number, title_arg
             )
         }
         "gemini" => {
-            // Google Gemini CLI (assuming similar interface)
             format!(
                 "gemini-cli 'Work on GitHub issue {}#{}{}'",
                 repo, issue_number, title_arg
             )
         }
         "ollama" | "local" => {
-            // Local model via ollama
             format!(
                 "ollama run codellama 'Implement GitHub issue {}#{}{}'",
                 repo, issue_number, title_arg
             )
         }
         "manual" => {
-            // For manual work, just echo instructions - human will take over
             format!(
                 "echo '🔧 Manual work session for issue {}#{}. The worktree is ready for you to work in.'",
                 repo, issue_number
@@ -651,6 +768,21 @@ pub fn build_agent_command(
     Ok(command)
 }
 
+/// Build the command to start an agent based on type and context
+///
+/// Returns the shell command that should be sent to the tmux session
+/// to start the appropriate agent with the issue context.
+/// This is for non-sandboxed execution (auto_accept = false).
+pub fn build_agent_command(
+    agent_type: &str,
+    repo: &str,
+    issue_number: u64,
+    issue_title: Option<&str>,
+) -> Result<String, String> {
+    // Non-sandboxed mode: don't auto-accept
+    build_agent_command_inner(agent_type, repo, issue_number, issue_title, false)
+}
+
 /// Start an agent in an existing tmux session
 ///
 /// This sends the appropriate command to the session to start the agent.
@@ -663,6 +795,36 @@ pub fn start_agent_in_session(
     issue_title: Option<&str>,
 ) -> Result<(), String> {
     let command = build_agent_command(agent_type, repo, issue_number, issue_title)?;
+    send_command(session_name, &command)
+}
+
+/// Start an agent in a Docker container inside a tmux session
+///
+/// This runs the agent inside a Docker container, which provides:
+/// - Filesystem isolation (worktree mounted at /workspace)
+/// - Resource limits (memory, CPU)
+/// - Safe auto-accept mode (--dangerously-skip-permissions is safe in sandbox)
+/// - Credential pass-through from host environment
+///
+/// The tmux session allows:
+/// - Attaching to see agent progress
+/// - Recovery if the container stops
+/// - Consistent management with non-sandboxed agents
+pub fn start_sandboxed_agent_in_session(
+    session_name: &str,
+    agent_type: &str,
+    repo: &str,
+    issue_number: u64,
+    issue_title: Option<&str>,
+    sandbox_config: &SandboxedAgentConfig,
+) -> Result<(), String> {
+    let command = build_sandboxed_agent_command(
+        agent_type,
+        repo,
+        issue_number,
+        issue_title,
+        sandbox_config,
+    )?;
     send_command(session_name, &command)
 }
 

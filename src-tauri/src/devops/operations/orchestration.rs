@@ -341,6 +341,8 @@ fn spawn_agent_for_issue(
         session_name: None,
         worktree_prefix: Some("handy-agent".to_string()),
         working_labels: vec!["staging".to_string()],
+        use_sandbox: false, // TODO: Pass from config
+        sandbox_ports: vec![], // Auto-detect ports from project
     };
 
     let spawn_result = orchestrator::spawn_agent(&config, worktree_base)?;

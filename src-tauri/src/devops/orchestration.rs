@@ -11,7 +11,7 @@ use tauri_plugin_store::StoreExt;
 
 use super::github::{self, GitHubPullRequest};
 use super::operations::agent_lifecycle::{detect_pr_for_agent, PrDetectionResult};
-use super::operations::epic::{EpicInfo, EpicRecoveryInfo, ExistingSubIssue, PhaseConfig};
+use super::operations::epic::{EpicInfo, EpicRecoveryInfo, ExistingSubIssue};
 use super::orchestrator::{self, SpawnConfig, SpawnResult};
 use super::pipeline::{PipelineItem, PipelineState, PipelineStatus};
 use super::tmux;
@@ -651,6 +651,9 @@ fn extract_phase_statuses_from_body(body: &str) -> std::collections::HashMap<u32
 }
 
 /// Set the active Epic from recovery info (more complete data).
+///
+/// This also cross-references with active tmux sessions to populate
+/// has_agent_working more accurately.
 pub fn set_active_epic_from_recovery(
     app: &AppHandle,
     recovery: &EpicRecoveryInfo,
@@ -659,6 +662,22 @@ pub fn set_active_epic_from_recovery(
 
     // Extract phase statuses from the Epic body (for manually completed phases)
     let body_statuses = extract_phase_statuses_from_body(&recovery.epic_body);
+
+    // Get active tmux sessions to cross-reference agent assignments
+    let active_sessions = tmux::list_sessions().unwrap_or_default();
+    let issue_to_session: std::collections::HashMap<u32, String> = active_sessions
+        .iter()
+        .filter_map(|s| {
+            s.metadata.as_ref().and_then(|m| {
+                m.issue_ref.as_ref().and_then(|ref_str| {
+                    // Parse issue number from ref like "owner/repo#123"
+                    ref_str.split('#').nth(1)
+                        .and_then(|num| num.parse::<u32>().ok())
+                        .map(|num| (num, s.name.clone()))
+                })
+            })
+        })
+        .collect();
 
     // Group sub-issues by phase
     let mut phase_issues: std::collections::HashMap<u32, Vec<&ExistingSubIssue>> =
@@ -679,7 +698,12 @@ pub fn set_active_epic_from_recovery(
             let phase_num = (i + 1) as u32;
             let phase_subs = phase_issues.get(&phase_num).map(|v| v.as_slice()).unwrap_or(&[]);
             let completed = phase_subs.iter().filter(|s| s.state == "closed").count();
-            let in_progress = phase_subs.iter().any(|s| s.has_agent_working || s.state == "open");
+
+            // Check for active agents: either has_agent_working from labels OR has active session
+            let has_active_agent = phase_subs.iter().any(|s| {
+                s.has_agent_working || issue_to_session.contains_key(&s.issue_number)
+            });
+            let in_progress = has_active_agent || phase_subs.iter().any(|s| s.state == "open");
 
             // Determine status:
             // 1. If there are sub-issues, use their status
@@ -711,22 +735,27 @@ pub fn set_active_epic_from_recovery(
         })
         .collect();
 
-    // Convert sub-issues to tracked format
+    // Convert sub-issues to tracked format, enriching with session info
     let tracked_sub_issues: Vec<TrackedSubIssue> = recovery
         .sub_issues
         .iter()
-        .map(|s| TrackedSubIssue {
-            issue_number: s.issue_number,
-            title: s.title.clone(),
-            phase: s.phase,
-            state: s.state.clone(),
-            agent_type: None, // Will be filled when agent is assigned
-            session_name: None,
-            agent_session: None,
-            has_agent_working: s.has_agent_working,
-            url: s.url.clone(),
-            pr_url: None,
-            pr_number: None,
+        .map(|s| {
+            let session_name = issue_to_session.get(&s.issue_number).cloned();
+            let has_agent = s.has_agent_working || session_name.is_some();
+
+            TrackedSubIssue {
+                issue_number: s.issue_number,
+                title: s.title.clone(),
+                phase: s.phase,
+                state: s.state.clone(),
+                agent_type: None, // Will be filled when agent is assigned
+                session_name: session_name.clone(),
+                agent_session: session_name,
+                has_agent_working: has_agent,
+                url: s.url.clone(),
+                pr_url: None,
+                pr_number: None,
+            }
         })
         .collect();
 
@@ -804,10 +833,24 @@ pub fn update_epic_sub_issue_agent(
 }
 
 /// Sync the active Epic state with GitHub.
+///
+/// This preserves locally-tracked state (pr_url, agent_session, etc.) while
+/// updating GitHub-sourced state (issue state, labels, etc.).
 pub async fn sync_active_epic(app: &AppHandle) -> Result<Option<ActiveEpicState>, String> {
     let state = load_epic_state(app);
 
     if let Some(active) = &state.active_epic {
+        // Save local-only state before reload
+        let local_state: std::collections::HashMap<u32, (Option<String>, Option<u64>, Option<String>, Option<String>)> =
+            active.sub_issues.iter().map(|s| {
+                (s.issue_number, (
+                    s.pr_url.clone(),
+                    s.pr_number,
+                    s.agent_session.clone(),
+                    s.agent_type.clone(),
+                ))
+            }).collect();
+
         // Reload from GitHub
         let recovery = super::operations::epic::load_epic_for_recovery(
             active.tracking_repo.clone(),
@@ -815,8 +858,34 @@ pub async fn sync_active_epic(app: &AppHandle) -> Result<Option<ActiveEpicState>
         )
         .await?;
 
-        // Update with fresh data
-        let updated = set_active_epic_from_recovery(app, &recovery);
+        // Update with fresh data (this recreates sub_issues)
+        let mut updated = set_active_epic_from_recovery(app, &recovery);
+
+        // Restore local-only state that GitHub doesn't know about
+        for sub_issue in &mut updated.sub_issues {
+            if let Some((pr_url, pr_number, agent_session, agent_type)) = local_state.get(&sub_issue.issue_number) {
+                // Preserve PR info
+                if sub_issue.pr_url.is_none() {
+                    sub_issue.pr_url = pr_url.clone();
+                }
+                if sub_issue.pr_number.is_none() {
+                    sub_issue.pr_number = *pr_number;
+                }
+                // Preserve agent session info
+                if sub_issue.agent_session.is_none() {
+                    sub_issue.agent_session = agent_session.clone();
+                }
+                if sub_issue.agent_type.is_none() {
+                    sub_issue.agent_type = agent_type.clone();
+                }
+            }
+        }
+
+        // Save the merged state
+        let mut final_state = load_epic_state(app);
+        final_state.active_epic = Some(updated.clone());
+        save_epic_state(app, &final_state);
+
         Ok(Some(updated))
     } else {
         Ok(None)

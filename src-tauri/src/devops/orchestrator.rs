@@ -374,6 +374,8 @@ pub fn spawn_agent(config: &SpawnConfig, repo_path: &str) -> Result<SpawnResult,
             auto_accept: true, // Safe in sandbox
             ports,
             auto_detect_ports: config.sandbox_ports.is_empty(),
+            use_agent_network: true, // Enable inter-container communication
+            remap_ports: true, // Avoid port conflicts between agents
         };
 
         tmux::start_sandboxed_agent_in_session(

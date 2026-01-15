@@ -628,6 +628,10 @@ pub fn run() {
         commands::devops::setup_devcontainer,
         commands::devops::start_devcontainer,
         commands::devops::exec_in_devcontainer,
+        // Agent network commands
+        commands::devops::ensure_agent_network,
+        commands::devops::get_agent_network_info,
+        commands::devops::list_network_containers,
         // Pipeline orchestration commands
         commands::devops::assign_issue_to_agent_pipeline,
         commands::devops::skip_issue,

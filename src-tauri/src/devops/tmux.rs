@@ -632,6 +632,10 @@ pub struct SandboxedAgentConfig {
     pub ports: Vec<PortMapping>,
     /// Whether to auto-detect common development ports from the project
     pub auto_detect_ports: bool,
+    /// Whether to join the shared agent network for inter-container communication
+    pub use_agent_network: bool,
+    /// Whether to remap ports to unique ranges (avoids conflicts between agents)
+    pub remap_ports: bool,
 }
 
 /// Build a Docker command that runs the agent inside a container
@@ -640,6 +644,8 @@ pub struct SandboxedAgentConfig {
 /// - The worktree mounted at /workspace
 /// - GitHub and Anthropic credentials passed from environment
 /// - Resource limits applied
+/// - Shared network for inter-container communication (optional)
+/// - Port remapping to unique ranges (optional, avoids conflicts)
 fn build_sandboxed_agent_command(
     agent_type: &str,
     repo: &str,
@@ -647,6 +653,8 @@ fn build_sandboxed_agent_command(
     issue_title: Option<&str>,
     config: &SandboxedAgentConfig,
 ) -> Result<String, String> {
+    use super::docker;
+
     // First get the base agent command
     let inner_command = build_agent_command_inner(agent_type, repo, issue_number, issue_title, config.auto_accept)?;
 
@@ -661,6 +669,19 @@ fn build_sandboxed_agent_command(
         "-w /workspace".to_string(),
     ];
 
+    // Join the shared agent network if enabled
+    // This allows containers to communicate via container names as hostnames
+    if config.use_agent_network {
+        // Ensure network exists (will be created if needed)
+        if let Err(e) = docker::ensure_agent_network() {
+            log::warn!("Failed to create agent network: {}", e);
+        } else {
+            docker_args.push(format!("--network {}", docker::get_agent_network_name()));
+            // Set hostname to container name for easy discovery
+            docker_args.push(format!("--hostname {}", container_name));
+        }
+    }
+
     // Add resource limits
     if let Some(ref mem) = config.memory_limit {
         docker_args.push(format!("-m {}", mem));
@@ -669,9 +690,23 @@ fn build_sandboxed_agent_command(
         docker_args.push(format!("--cpus {}", cpu));
     }
 
-    // Add port mappings
-    for port_mapping in &config.ports {
-        docker_args.push(port_mapping.to_docker_arg());
+    // Add port mappings (with optional remapping to unique ranges)
+    if config.remap_ports {
+        // Remap ports to unique ranges to avoid conflicts between agents
+        for port_mapping in &config.ports {
+            let host_port = docker::remap_port_to_range(port_mapping.container_port, issue_number);
+            let remapped = PortMapping {
+                host_port,
+                container_port: port_mapping.container_port,
+                protocol: port_mapping.protocol.clone(),
+            };
+            docker_args.push(remapped.to_docker_arg());
+        }
+    } else {
+        // Use ports as-is
+        for port_mapping in &config.ports {
+            docker_args.push(port_mapping.to_docker_arg());
+        }
     }
 
     // Pass through credentials from host environment
@@ -682,6 +717,14 @@ fn build_sandboxed_agent_command(
     // Add context env vars
     docker_args.push(format!("-e HANDY_ISSUE_REF={}#{}", repo, issue_number));
     docker_args.push(format!("-e HANDY_AGENT_TYPE={}", agent_type));
+    docker_args.push(format!("-e HANDY_CONTAINER_NAME={}", container_name));
+
+    // Add port range info so the agent knows which ports it can use
+    if config.remap_ports {
+        let (base, end) = docker::allocate_port_range(issue_number);
+        docker_args.push(format!("-e HANDY_PORT_RANGE_BASE={}", base));
+        docker_args.push(format!("-e HANDY_PORT_RANGE_END={}", end));
+    }
 
     // Add image and command
     docker_args.push(image.to_string());

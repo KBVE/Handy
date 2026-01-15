@@ -1117,6 +1117,38 @@ pub fn exec_in_devcontainer(worktree_path: String, command: String) -> Result<St
     crate::devops::docker::exec_in_devcontainer(&worktree_path, &command)
 }
 
+/// Ensure the shared agent network exists for inter-container communication
+///
+/// Creates the 'handy-agents' Docker network if it doesn't exist.
+/// Agents on this network can communicate using container names as hostnames.
+#[tauri::command]
+#[specta::specta]
+pub fn ensure_agent_network() -> Result<(), String> {
+    crate::devops::docker::ensure_agent_network()
+}
+
+/// Get network information for a sandboxed agent
+///
+/// Returns the allocated port range and network hostname for the agent.
+/// Use this to know which ports are available and how other agents can reach this one.
+#[tauri::command]
+#[specta::specta]
+pub fn get_agent_network_info(
+    issue_number: u64,
+    container_ports: Vec<u16>,
+) -> crate::devops::docker::AgentNetworkInfo {
+    crate::devops::docker::get_agent_network_info(issue_number, &container_ports)
+}
+
+/// List all containers on the agent network
+///
+/// Returns container names that can be used as hostnames for inter-container communication.
+#[tauri::command]
+#[specta::specta]
+pub fn list_network_containers() -> Result<Vec<String>, String> {
+    crate::devops::docker::list_network_containers()
+}
+
 // ===== Pipeline Orchestration Commands =====
 
 /// Assign an issue to an agent, creating worktree and tmux session.

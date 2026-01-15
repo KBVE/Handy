@@ -28,6 +28,15 @@ const DEFAULT_AGENT_IMAGE: &str = "node:20-bookworm";
 /// Container name prefix for Handy agent containers
 const CONTAINER_PREFIX: &str = "handy-sandbox-";
 
+/// Docker network name for inter-agent communication
+const AGENT_NETWORK: &str = "handy-agents";
+
+/// Base port for agent port range allocation
+const PORT_RANGE_BASE: u16 = 30000;
+
+/// Size of each agent's port range (agent 0 gets 30000-30099, agent 1 gets 30100-30199, etc.)
+const PORT_RANGE_SIZE: u16 = 100;
+
 /// Sandbox mode - how to run the isolated agent
 #[derive(Debug, Clone, Serialize, Deserialize, Type, Default)]
 pub enum SandboxMode {
@@ -99,6 +108,131 @@ pub fn is_docker_available() -> bool {
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
+}
+
+/// Check if the handy-agents network exists
+pub fn network_exists() -> bool {
+    Command::new("docker")
+        .args(["network", "inspect", AGENT_NETWORK])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Create the handy-agents Docker network for inter-container communication
+///
+/// This network allows sandboxed agents to communicate with each other using
+/// container names as hostnames (e.g., `handy-sandbox-123:3000`).
+pub fn ensure_agent_network() -> Result<(), String> {
+    if network_exists() {
+        return Ok(());
+    }
+
+    let output = Command::new("docker")
+        .args(["network", "create", "--driver", "bridge", AGENT_NETWORK])
+        .output()
+        .map_err(|e| format!("Failed to create network: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // Ignore "already exists" error (race condition)
+        if !stderr.contains("already exists") {
+            return Err(format!("Failed to create network: {}", stderr));
+        }
+    }
+
+    log::info!("Created Docker network: {}", AGENT_NETWORK);
+    Ok(())
+}
+
+/// Get the Docker network name for agent containers
+pub fn get_agent_network_name() -> &'static str {
+    AGENT_NETWORK
+}
+
+/// Allocate a unique port range for an agent based on issue number
+///
+/// Each agent gets a range of PORT_RANGE_SIZE ports to avoid conflicts.
+/// Port ranges are deterministic based on issue number modulo 100.
+///
+/// Returns (base_port, end_port) tuple, e.g., (30000, 30099) for slot 0
+pub fn allocate_port_range(issue_number: u64) -> (u16, u16) {
+    // Use issue number modulo 100 to determine slot (supports 100 concurrent agents)
+    let slot = (issue_number % 100) as u16;
+    let base = PORT_RANGE_BASE + (slot * PORT_RANGE_SIZE);
+    let end = base + PORT_RANGE_SIZE - 1;
+    (base, end)
+}
+
+/// Remap a container port to a unique host port within the agent's allocated range
+///
+/// For example, if an agent needs port 3000 and has range 30100-30199,
+/// this maps container:3000 -> host:30100
+pub fn remap_port_to_range(container_port: u16, issue_number: u64) -> u16 {
+    let (base, _end) = allocate_port_range(issue_number);
+    // Map container port to range: 3000 -> base + (3000 % PORT_RANGE_SIZE)
+    // This keeps relative port offsets consistent
+    base + (container_port % PORT_RANGE_SIZE)
+}
+
+/// Information about an agent's network configuration
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct AgentNetworkInfo {
+    /// The Docker network name
+    pub network_name: String,
+    /// Container hostname (can be used by other containers to connect)
+    pub container_hostname: String,
+    /// Allocated host port range (base, end)
+    pub host_port_range: (u16, u16),
+    /// Port mappings from container port to host port
+    pub port_mappings: Vec<(u16, u16)>,
+}
+
+/// Get network info for a sandboxed agent
+pub fn get_agent_network_info(issue_number: u64, container_ports: &[u16]) -> AgentNetworkInfo {
+    let container_name = container_name_for_issue(issue_number);
+    let (base, end) = allocate_port_range(issue_number);
+
+    let port_mappings: Vec<(u16, u16)> = container_ports
+        .iter()
+        .map(|&cp| (cp, remap_port_to_range(cp, issue_number)))
+        .collect();
+
+    AgentNetworkInfo {
+        network_name: AGENT_NETWORK.to_string(),
+        container_hostname: container_name,
+        host_port_range: (base, end),
+        port_mappings,
+    }
+}
+
+/// List all containers on the handy-agents network
+pub fn list_network_containers() -> Result<Vec<String>, String> {
+    if !network_exists() {
+        return Ok(vec![]);
+    }
+
+    let output = Command::new("docker")
+        .args([
+            "network", "inspect", AGENT_NETWORK,
+            "--format", "{{range .Containers}}{{.Name}} {{end}}"
+        ])
+        .output()
+        .map_err(|e| format!("Failed to inspect network: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to inspect network: {}", stderr));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let containers: Vec<String> = stdout
+        .split_whitespace()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+
+    Ok(containers)
 }
 
 /// Get the GitHub token from gh CLI

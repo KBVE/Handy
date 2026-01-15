@@ -241,7 +241,10 @@ export const DevOpsSettings: React.FC = () => {
                       {t("devops.sandbox.enableLabel", "Run agents in Docker")}
                     </div>
                     <div className="text-[10px] text-gray-400">
-                      {t("devops.sandbox.enableDescription", "Isolate agents in containers for safety")}
+                      {t(
+                        "devops.sandbox.enableDescription",
+                        "Isolate agents in containers for safety",
+                      )}
                     </div>
                   </div>
                   <button
@@ -259,10 +262,13 @@ export const DevOpsSettings: React.FC = () => {
                   </button>
                 </div>
               </div>
-            ) : dependencies.docker.installed && !dependencies.docker.authenticated && (
-              <div className="ml-8 text-xs text-yellow-400/70">
-                {t("devops.dependencies.daemonNotRunning")}
-              </div>
+            ) : (
+              dependencies.docker.installed &&
+              !dependencies.docker.authenticated && (
+                <div className="ml-8 text-xs text-yellow-400/70">
+                  {t("devops.dependencies.daemonNotRunning")}
+                </div>
+              )
             )}
 
             {/* AI Agents (at least one required) */}

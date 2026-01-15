@@ -1046,10 +1046,7 @@ pub fn get_sandbox_status(
 /// Get logs from a sandbox container
 #[tauri::command]
 #[specta::specta]
-pub fn get_sandbox_logs(
-    container_name: String,
-    tail: Option<u32>,
-) -> Result<String, String> {
+pub fn get_sandbox_logs(container_name: String, tail: Option<u32>) -> Result<String, String> {
     crate::devops::docker::get_sandbox_logs(&container_name, tail)
 }
 

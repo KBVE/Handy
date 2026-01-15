@@ -14,7 +14,9 @@ import { OverlayScrollbars } from "overlayscrollbars";
  * }
  * ```
  */
-export function useOverlayScrollbarsRef<T extends HTMLElement = HTMLDivElement>() {
+export function useOverlayScrollbarsRef<
+  T extends HTMLElement = HTMLDivElement,
+>() {
   const ref = useRef<T>(null);
   const instanceRef = useRef<OverlayScrollbars | null>(null);
 
@@ -60,9 +62,8 @@ export function useOverlayScrollbars(): void {
   useEffect(() => {
     // Only initialize on the main scrollable container
     // This selector should match ONLY stable, non-dynamic elements
-    const mainContainer = document.querySelector<HTMLElement>(
-      "[data-main-scroll]"
-    );
+    const mainContainer =
+      document.querySelector<HTMLElement>("[data-main-scroll]");
 
     let instance: OverlayScrollbars | null = null;
 

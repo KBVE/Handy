@@ -212,7 +212,10 @@ const SessionCard: React.FC<SessionCardProps> = ({
             onClick={() => onRestart(session.name)}
             disabled={isRestarting}
             className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 transition-colors disabled:opacity-50"
-            title={t("devops.sessions.restartAgent", "Restart the agent in this session")}
+            title={t(
+              "devops.sessions.restartAgent",
+              "Restart the agent in this session",
+            )}
           >
             {isRestarting ? (
               <Loader2 className="w-3 h-3 animate-spin" />
@@ -358,9 +361,14 @@ const ExpandedSessionView: React.FC<ExpandedSessionViewProps> = ({
   const formatRelativeTime = (date: Date) => {
     const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
     if (seconds < 5) return t("devops.sessions.justNow", "just now");
-    if (seconds < 60) return t("devops.sessions.secondsAgo", "{{count}}s ago", { count: seconds });
+    if (seconds < 60)
+      return t("devops.sessions.secondsAgo", "{{count}}s ago", {
+        count: seconds,
+      });
     const minutes = Math.floor(seconds / 60);
-    return t("devops.sessions.minutesAgo", "{{count}}m ago", { count: minutes });
+    return t("devops.sessions.minutesAgo", "{{count}}m ago", {
+      count: minutes,
+    });
   };
 
   const handleOpenInTerminal = async () => {
@@ -461,7 +469,9 @@ const ExpandedSessionView: React.FC<ExpandedSessionViewProps> = ({
           )}
           {/* Last updated indicator */}
           <div className="flex items-center gap-2 ml-auto">
-            <RefreshCcw className={`w-3 h-3 ${loadingOutput ? "animate-spin" : ""}`} />
+            <RefreshCcw
+              className={`w-3 h-3 ${loadingOutput ? "animate-spin" : ""}`}
+            />
             <span className="text-xs">
               {lastUpdated
                 ? formatRelativeTime(lastUpdated)
@@ -597,7 +607,10 @@ const ExpandedSessionView: React.FC<ExpandedSessionViewProps> = ({
                 disabled={isRestarting}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 transition-colors disabled:opacity-50"
                 type="button"
-                title={t("devops.sessions.restartAgent", "Restart the agent in this session")}
+                title={t(
+                  "devops.sessions.restartAgent",
+                  "Restart the agent in this session",
+                )}
               >
                 {isRestarting ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -643,7 +656,9 @@ export const TmuxSessionsGrid: React.FC = () => {
     null,
   );
   const [isStartingSupportWorker, setIsStartingSupportWorker] = useState(false);
-  const [restartingSession, setRestartingSession] = useState<string | null>(null);
+  const [restartingSession, setRestartingSession] = useState<string | null>(
+    null,
+  );
 
   const sessions = useDevOpsStore((state) => state.sessions);
   const isLoading = useDevOpsStore((state) => state.sessionsLoading);
@@ -656,7 +671,7 @@ export const TmuxSessionsGrid: React.FC = () => {
 
   // Count stopped sessions that can be restarted
   const stoppedSessions = sessions.filter(
-    (s) => s.status === "Stopped" && s.metadata?.issue_ref
+    (s) => s.status === "Stopped" && s.metadata?.issue_ref,
   );
 
   // Handler for restarting an agent in a session
@@ -667,20 +682,24 @@ export const TmuxSessionsGrid: React.FC = () => {
       if (result.status === "ok") {
         toast.success(
           t("devops.sessions.restartSuccess", "Agent Restarted"),
-          t("devops.sessions.restartSuccessMessage", "The agent has been restarted in session {{session}}", { session: sessionName })
+          t(
+            "devops.sessions.restartSuccessMessage",
+            "The agent has been restarted in session {{session}}",
+            { session: sessionName },
+          ),
         );
         // Refresh to update status
         await refreshSessions(false);
       } else {
         toast.error(
           t("devops.sessions.restartError", "Failed to Restart"),
-          result.error
+          result.error,
         );
       }
     } catch (err) {
       toast.error(
         t("devops.sessions.restartError", "Failed to Restart"),
-        err instanceof Error ? err.message : String(err)
+        err instanceof Error ? err.message : String(err),
       );
     } finally {
       setRestartingSession(null);
@@ -697,26 +716,34 @@ export const TmuxSessionsGrid: React.FC = () => {
         if (succeeded > 0) {
           toast.success(
             t("devops.sessions.recoverySuccess", "Recovery Complete"),
-            t("devops.sessions.recoverySuccessMessage", "Restarted {{count}} agent(s)", { count: succeeded })
+            t(
+              "devops.sessions.recoverySuccessMessage",
+              "Restarted {{count}} agent(s)",
+              { count: succeeded },
+            ),
           );
         }
         if (failed > 0) {
           toast.warning(
             t("devops.sessions.recoveryPartial", "Some Failed"),
-            t("devops.sessions.recoveryPartialMessage", "{{count}} agent(s) could not be restarted", { count: failed })
+            t(
+              "devops.sessions.recoveryPartialMessage",
+              "{{count}} agent(s) could not be restarted",
+              { count: failed },
+            ),
           );
         }
         await refreshSessions(false);
       } else {
         toast.error(
           t("devops.sessions.recoveryError", "Recovery Failed"),
-          result.error
+          result.error,
         );
       }
     } catch (err) {
       toast.error(
         t("devops.sessions.recoveryError", "Recovery Failed"),
-        err instanceof Error ? err.message : String(err)
+        err instanceof Error ? err.message : String(err),
       );
     }
   };
@@ -854,10 +881,17 @@ export const TmuxSessionsGrid: React.FC = () => {
             <AlertTriangle className="w-5 h-5 text-yellow-400 shrink-0" />
             <div className="flex-1">
               <p className="text-sm text-yellow-400 font-medium">
-                {t("devops.sessions.stoppedAgents", "{{count}} stopped agent(s) detected", { count: stoppedSessions.length })}
+                {t(
+                  "devops.sessions.stoppedAgents",
+                  "{{count}} stopped agent(s) detected",
+                  { count: stoppedSessions.length },
+                )}
               </p>
               <p className="text-xs text-yellow-400/70">
-                {t("devops.sessions.stoppedAgentsHint", "These sessions have agents that stopped. You can restart them to continue work.")}
+                {t(
+                  "devops.sessions.stoppedAgentsHint",
+                  "These sessions have agents that stopped. You can restart them to continue work.",
+                )}
               </p>
             </div>
             <button

@@ -231,7 +231,10 @@ pub async fn create_sub_issues(
         // Phase info is tracked in the issue body, not via labels
         let labels = vec!["todo".to_string()];
         if let Err(e) = github::add_labels_async(&epic_repo, issue_number, &labels).await {
-            eprintln!("Warning: Failed to add labels to issue #{}: {}", issue_number, e);
+            eprintln!(
+                "Warning: Failed to add labels to issue #{}: {}",
+                issue_number, e
+            );
             // Continue anyway - labels are nice to have but not critical
         }
 
@@ -405,11 +408,7 @@ pub async fn load_epic(repo: String, epic_number: u32) -> Result<EpicInfo, Strin
     }
 
     // Extract title (remove [EPIC] prefix if present)
-    let title = issue
-        .title
-        .trim_start_matches("[EPIC]")
-        .trim()
-        .to_string();
+    let title = issue.title.trim_start_matches("[EPIC]").trim().to_string();
 
     // Parse body to extract work_repo and phases
     let body = issue.body.as_deref().unwrap_or("");
@@ -466,7 +465,10 @@ pub struct EpicRecoveryInfo {
 ///
 /// This fetches the epic, all its sub-issues, and determines what work
 /// remains to be done. Useful for recovering/continuing orchestration.
-pub async fn load_epic_for_recovery(repo: String, epic_number: u32) -> Result<EpicRecoveryInfo, String> {
+pub async fn load_epic_for_recovery(
+    repo: String,
+    epic_number: u32,
+) -> Result<EpicRecoveryInfo, String> {
     // Load basic epic info
     let epic = load_epic(repo.clone(), epic_number).await?;
 
@@ -511,7 +513,11 @@ pub async fn load_epic_for_recovery(repo: String, epic_number: u32) -> Result<Ep
     // Calculate progress
     let total = sub_issues.len();
     let completed = sub_issues.iter().filter(|i| i.state == "closed").count();
-    let percentage = if total > 0 { (completed * 100) / total } else { 0 };
+    let percentage = if total > 0 {
+        (completed * 100) / total
+    } else {
+        0
+    };
 
     let progress = EpicProgress {
         total,
@@ -521,10 +527,8 @@ pub async fn load_epic_for_recovery(repo: String, epic_number: u32) -> Result<Ep
     };
 
     // Find phases that have no sub-issues
-    let phases_with_issues: std::collections::HashSet<u32> = sub_issues
-        .iter()
-        .filter_map(|i| i.phase)
-        .collect();
+    let phases_with_issues: std::collections::HashSet<u32> =
+        sub_issues.iter().filter_map(|i| i.phase).collect();
 
     let phases_without_issues: Vec<u32> = (1..=epic.phases.len() as u32)
         .filter(|p| !phases_with_issues.contains(p))
@@ -534,9 +538,7 @@ pub async fn load_epic_for_recovery(repo: String, epic_number: u32) -> Result<Ep
     let ready_for_agents: Vec<ExistingSubIssue> = sub_issues
         .iter()
         .filter(|i| {
-            i.state == "open"
-                && i.labels.iter().any(|l| l == "todo")
-                && !i.has_agent_working
+            i.state == "open" && i.labels.iter().any(|l| l == "todo") && !i.has_agent_working
         })
         .cloned()
         .collect();

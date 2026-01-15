@@ -35,7 +35,8 @@ export const useToastStore = create<ToastStore>((set, get) => ({
 
   addToast: (toast) => {
     const id = `toast-${Date.now()}-${toastCounter++}`;
-    const duration = toast.duration ?? DURATION_BY_TYPE[toast.type] ?? DEFAULT_DURATION;
+    const duration =
+      toast.duration ?? DURATION_BY_TYPE[toast.type] ?? DEFAULT_DURATION;
 
     const newToast: Toast = {
       id,
@@ -84,37 +85,43 @@ export const toast = {
    * Show a success toast (auto-dismisses in 5s)
    */
   success: (title: string, message?: string, duration?: number): string =>
-    useToastStore.getState().addToast({ type: "success", title, message, duration }),
+    useToastStore
+      .getState()
+      .addToast({ type: "success", title, message, duration }),
 
   /**
    * Show an error toast (auto-dismisses in 8s)
    */
   error: (title: string, message?: string, duration?: number): string =>
-    useToastStore.getState().addToast({ type: "error", title, message, duration }),
+    useToastStore
+      .getState()
+      .addToast({ type: "error", title, message, duration }),
 
   /**
    * Show a warning toast (auto-dismisses in 7s)
    */
   warning: (title: string, message?: string, duration?: number): string =>
-    useToastStore.getState().addToast({ type: "warning", title, message, duration }),
+    useToastStore
+      .getState()
+      .addToast({ type: "warning", title, message, duration }),
 
   /**
    * Show an info toast (auto-dismisses in 6s)
    */
   info: (title: string, message?: string, duration?: number): string =>
-    useToastStore.getState().addToast({ type: "info", title, message, duration }),
+    useToastStore
+      .getState()
+      .addToast({ type: "info", title, message, duration }),
 
   /**
    * Remove a specific toast by ID
    */
-  dismiss: (id: string): void =>
-    useToastStore.getState().removeToast(id),
+  dismiss: (id: string): void => useToastStore.getState().removeToast(id),
 
   /**
    * Clear all toasts
    */
-  clear: (): void =>
-    useToastStore.getState().clearAll(),
+  clear: (): void => useToastStore.getState().clearAll(),
 };
 
 // Make toast available globally for easy access

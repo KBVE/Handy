@@ -103,7 +103,9 @@ export function GenericEpicCreator() {
   const [linkEpicNumber, setLinkEpicNumber] = useState<string>("");
   const [linkRepo, setLinkRepo] = useState<string>("KBVE/Handy");
   const [linking, setLinking] = useState(false);
-  const [recoveryInfo, setRecoveryInfo] = useState<EpicRecoveryInfo | null>(null);
+  const [recoveryInfo, setRecoveryInfo] = useState<EpicRecoveryInfo | null>(
+    null,
+  );
 
   // Loaded templates from filesystem
   const [templates, setTemplates] = useState<PlanTemplate[]>([
@@ -135,7 +137,8 @@ export function GenericEpicCreator() {
 
   // Orchestration state
   const [orchestrating, setOrchestrating] = useState(false);
-  const [orchestrationResult, setOrchestrationResult] = useState<OrchestrationResult | null>(null);
+  const [orchestrationResult, setOrchestrationResult] =
+    useState<OrchestrationResult | null>(null);
   const [autoSpawnAgents, setAutoSpawnAgents] = useState(false);
   const [localRepoPath, setLocalRepoPath] = useState<string>("");
   const [repoPathSuggestions, setRepoPathSuggestions] = useState<string[]>([]);
@@ -149,7 +152,9 @@ export function GenericEpicCreator() {
     const loadTemplates = async () => {
       try {
         setTemplatesLoading(true);
-        const loadedTemplates = await invoke<PlanTemplate[]>("list_epic_plan_templates");
+        const loadedTemplates = await invoke<PlanTemplate[]>(
+          "list_epic_plan_templates",
+        );
         setTemplates(loadedTemplates);
         setTemplatesError(null);
 
@@ -170,7 +175,7 @@ export function GenericEpicCreator() {
         toast.warning(
           "Template Loading Failed",
           "Using fallback templates. Could not load from docs/plans/",
-          7000
+          7000,
         );
         // Fallback to hardcoded templates if filesystem loading fails
         const fallbackTemplates: PlanTemplate[] = [
@@ -242,17 +247,17 @@ export function GenericEpicCreator() {
 
         const completed = subIssues.filter((s) => s.state === "closed").length;
         const readyForAgents = subIssues.filter(
-          (s) => s.state === "open" && !s.has_agent_working
+          (s) => s.state === "open" && !s.has_agent_working,
         );
         const inProgress = subIssues.filter((s) => s.has_agent_working);
 
         // Calculate phases without issues
         const phasesWithIssues = new Set(
-          subIssues.map((s) => s.phase).filter((p): p is number => p !== null)
+          subIssues.map((s) => s.phase).filter((p): p is number => p !== null),
         );
         const allPhaseNumbers = activeEpic.phases.map((p) => p.phase_number);
         const phasesWithoutIssues = allPhaseNumbers.filter(
-          (pn) => !phasesWithIssues.has(pn)
+          (pn) => !phasesWithIssues.has(pn),
         );
 
         const restoredRecovery: EpicRecoveryInfo = {
@@ -261,7 +266,10 @@ export function GenericEpicCreator() {
           progress: {
             total: subIssues.length,
             completed,
-            percentage: subIssues.length > 0 ? Math.round((completed / subIssues.length) * 100) : 0,
+            percentage:
+              subIssues.length > 0
+                ? Math.round((completed / subIssues.length) * 100)
+                : 0,
             remaining: subIssues.length - completed,
           },
           phases_without_issues: phasesWithoutIssues,
@@ -274,7 +282,7 @@ export function GenericEpicCreator() {
       toast.info(
         "Epic Restored",
         `Restored active Epic #${activeEpic.epic_number}: ${activeEpic.title}`,
-        5000
+        5000,
       );
     }
   }, [activeEpic, result]);
@@ -410,16 +418,12 @@ export function GenericEpicCreator() {
       toast.success(
         "Epic Created Successfully",
         `Epic #${epicInfo.epic_number} created in ${epicInfo.repo}`,
-        8000
+        8000,
       );
     } catch (err) {
       setError(err as string);
       console.error("Failed to create epic:", err);
-      toast.error(
-        "Failed to Create Epic",
-        err as string,
-        10000
-      );
+      toast.error("Failed to Create Epic", err as string, 10000);
     } finally {
       setCreating(false);
     }
@@ -437,10 +441,13 @@ export function GenericEpicCreator() {
 
     try {
       // First try to load with full recovery info
-      const recovery = await invoke<EpicRecoveryInfo>("load_epic_for_recovery", {
-        repo: linkRepo,
-        epicNumber: epicNum,
-      });
+      const recovery = await invoke<EpicRecoveryInfo>(
+        "load_epic_for_recovery",
+        {
+          repo: linkRepo,
+          epicNumber: epicNum,
+        },
+      );
 
       // Persist the Epic state to the store (survives tab switches and app restarts)
       await setActiveEpicFromRecovery(recovery);
@@ -451,7 +458,7 @@ export function GenericEpicCreator() {
       toast.success(
         "Epic Linked & Saved",
         `Epic #${recovery.epic.epic_number} is now your active Epic. State will persist across sessions.`,
-        8000
+        8000,
       );
     } catch (err) {
       setError(err as string);
@@ -508,10 +515,13 @@ export function GenericEpicCreator() {
         worktree_base: localRepoPath,
       };
 
-      const orchResult = await invoke<OrchestrationResult>("start_epic_orchestration", {
-        epic: result,
-        config,
-      });
+      const orchResult = await invoke<OrchestrationResult>(
+        "start_epic_orchestration",
+        {
+          epic: result,
+          config,
+        },
+      );
 
       setOrchestrationResult(orchResult);
 
@@ -519,7 +529,7 @@ export function GenericEpicCreator() {
         toast.success(
           "Orchestration Started",
           `Created ${orchResult.sub_issues.length} sub-issues${orchResult.spawned_agents.length > 0 ? ` and spawned ${orchResult.spawned_agents.length} agents` : ""}`,
-          8000
+          8000,
         );
       }
 
@@ -544,7 +554,9 @@ export function GenericEpicCreator() {
         <div className="flex items-center gap-2">
           <span className="text-green-400 text-lg">✓</span>
           <span className="text-sm font-medium text-white">
-            {isLinkedEpic ? "Epic Linked Successfully!" : "Epic Created Successfully!"}
+            {isLinkedEpic
+              ? "Epic Linked Successfully!"
+              : "Epic Created Successfully!"}
           </span>
         </div>
         <div className="space-y-1 text-xs text-gray-300">
@@ -597,11 +609,16 @@ export function GenericEpicCreator() {
                   not_started: "○ Not Started",
                   skipped: "⊘ Skipped",
                 };
-                const colorClass = statusColors[phase.status] || statusColors.not_started;
-                const label = statusLabels[phase.status] || statusLabels.not_started;
+                const colorClass =
+                  statusColors[phase.status] || statusColors.not_started;
+                const label =
+                  statusLabels[phase.status] || statusLabels.not_started;
 
                 return (
-                  <div key={phase.phase_number} className="flex items-center gap-2 text-xs">
+                  <div
+                    key={phase.phase_number}
+                    className="flex items-center gap-2 text-xs"
+                  >
                     <span className={`px-2 py-0.5 rounded ${colorClass}`}>
                       Phase {phase.phase_number}
                     </span>
@@ -628,19 +645,30 @@ export function GenericEpicCreator() {
             <div className="space-y-2 text-xs text-gray-300">
               <div className="flex gap-4">
                 <div>
-                  Progress: <span className="text-white font-medium">{recoveryInfo.progress.completed}/{recoveryInfo.progress.total}</span>
+                  Progress:{" "}
+                  <span className="text-white font-medium">
+                    {recoveryInfo.progress.completed}/
+                    {recoveryInfo.progress.total}
+                  </span>
                   {recoveryInfo.progress.total > 0 && (
-                    <span className="text-gray-400 ml-1">({recoveryInfo.progress.percentage}%)</span>
+                    <span className="text-gray-400 ml-1">
+                      ({recoveryInfo.progress.percentage}%)
+                    </span>
                   )}
                 </div>
                 <div>
-                  Remaining: <span className="text-white">{recoveryInfo.progress.remaining}</span>
+                  Remaining:{" "}
+                  <span className="text-white">
+                    {recoveryInfo.progress.remaining}
+                  </span>
                 </div>
               </div>
 
               {recoveryInfo.in_progress.length > 0 && (
                 <div>
-                  <span className="text-yellow-400">In Progress ({recoveryInfo.in_progress.length}):</span>
+                  <span className="text-yellow-400">
+                    In Progress ({recoveryInfo.in_progress.length}):
+                  </span>
                   <ul className="mt-1 ml-4 list-disc space-y-0.5">
                     {recoveryInfo.in_progress.map((issue) => (
                       <li key={issue.issue_number}>
@@ -661,7 +689,9 @@ export function GenericEpicCreator() {
 
               {recoveryInfo.ready_for_agents.length > 0 && (
                 <div>
-                  <span className="text-green-400">Ready for Agents ({recoveryInfo.ready_for_agents.length}):</span>
+                  <span className="text-green-400">
+                    Ready for Agents ({recoveryInfo.ready_for_agents.length}):
+                  </span>
                   <ul className="mt-1 ml-4 list-disc space-y-0.5">
                     {recoveryInfo.ready_for_agents.slice(0, 5).map((issue) => (
                       <li key={issue.issue_number}>
@@ -687,7 +717,8 @@ export function GenericEpicCreator() {
 
               {recoveryInfo.phases_without_issues.length > 0 && (
                 <div className="text-yellow-400">
-                  Phases without sub-issues: {recoveryInfo.phases_without_issues.join(", ")}
+                  Phases without sub-issues:{" "}
+                  {recoveryInfo.phases_without_issues.join(", ")}
                 </div>
               )}
             </div>
@@ -702,11 +733,17 @@ export function GenericEpicCreator() {
             </div>
             <div className="space-y-1 text-xs text-gray-300">
               <div>
-                Sub-issues created: <span className="text-white">{orchestrationResult.sub_issues.length}</span>
+                Sub-issues created:{" "}
+                <span className="text-white">
+                  {orchestrationResult.sub_issues.length}
+                </span>
               </div>
               {orchestrationResult.spawned_agents.length > 0 && (
                 <div>
-                  Agents spawned: <span className="text-white">{orchestrationResult.spawned_agents.length}</span>
+                  Agents spawned:{" "}
+                  <span className="text-white">
+                    {orchestrationResult.spawned_agents.length}
+                  </span>
                 </div>
               )}
               {orchestrationResult.sub_issues.length > 0 && (
@@ -744,7 +781,8 @@ export function GenericEpicCreator() {
             <div className="text-xs text-gray-400 mb-2">
               <strong>Start Orchestration:</strong>
               <p className="mt-1">
-                This will create sub-issues from phase tasks and optionally spawn agents.
+                This will create sub-issues from phase tasks and optionally
+                spawn agents.
               </p>
             </div>
 
@@ -777,9 +815,12 @@ export function GenericEpicCreator() {
                       type="button"
                       onClick={async () => {
                         try {
-                          const suggestions = await invoke<string[]>("suggest_local_repo_path", {
-                            githubRepo: result?.work_repo || workRepo || repo,
-                          });
+                          const suggestions = await invoke<string[]>(
+                            "suggest_local_repo_path",
+                            {
+                              githubRepo: result?.work_repo || workRepo || repo,
+                            },
+                          );
                           setRepoPathSuggestions(suggestions);
                           if (suggestions.length > 0 && !localRepoPath) {
                             setLocalRepoPath(suggestions[0]);
@@ -812,7 +853,8 @@ export function GenericEpicCreator() {
                     </div>
                   )}
                   <p className="text-[10px] text-gray-500 mt-1">
-                    Full filesystem path to a local git repo where worktrees will be created
+                    Full filesystem path to a local git repo where worktrees
+                    will be created
                   </p>
                 </div>
               )}
@@ -822,12 +864,16 @@ export function GenericEpicCreator() {
             {(() => {
               // Find the next phase to work on
               const nextPhase = activeEpic?.phases.find(
-                (p) => p.status === "not_started" || p.status === "in_progress"
+                (p) => p.status === "not_started" || p.status === "in_progress",
               );
               const nextPhaseNum = nextPhase?.phase_number ?? 1;
-              const allCompleted = activeEpic?.phases.every((p) => p.status === "completed");
+              const allCompleted = activeEpic?.phases.every(
+                (p) => p.status === "completed",
+              );
               const phasesNeedingWork = activeEpic?.phases
-                .filter((p) => p.status !== "completed" && p.status !== "skipped")
+                .filter(
+                  (p) => p.status !== "completed" && p.status !== "skipped",
+                )
                 .map((p) => p.phase_number) ?? [1];
 
               return (
@@ -851,11 +897,15 @@ export function GenericEpicCreator() {
                       </button>
                       {phasesNeedingWork.length > 1 && (
                         <button
-                          onClick={() => handleStartOrchestration(phasesNeedingWork)}
+                          onClick={() =>
+                            handleStartOrchestration(phasesNeedingWork)
+                          }
                           disabled={orchestrating}
                           className="px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 text-xs rounded transition-colors disabled:opacity-50"
                         >
-                          {orchestrating ? "Starting..." : `Start Phases ${phasesNeedingWork.join(", ")}`}
+                          {orchestrating
+                            ? "Starting..."
+                            : `Start Phases ${phasesNeedingWork.join(", ")}`}
                         </button>
                       )}
                     </>
@@ -865,7 +915,9 @@ export function GenericEpicCreator() {
                     <div className="w-full mt-2 flex flex-wrap gap-1">
                       {result.phases.map((phase, idx) => {
                         const phaseNum = idx + 1;
-                        const phaseState = activeEpic?.phases.find((p) => p.phase_number === phaseNum);
+                        const phaseState = activeEpic?.phases.find(
+                          (p) => p.phase_number === phaseNum,
+                        );
                         const isComplete = phaseState?.status === "completed";
                         return (
                           <button
@@ -982,7 +1034,8 @@ export function GenericEpicCreator() {
           className="w-full px-3 py-2 bg-mid-gray/10 border border-mid-gray/20 rounded text-sm text-white focus:outline-none focus:border-blue-500 font-mono"
         />
         <div className="mt-1 text-xs text-gray-500">
-          Enter the GitHub issue number of an existing epic to link and continue orchestration
+          Enter the GitHub issue number of an existing epic to link and continue
+          orchestration
         </div>
       </div>
 
@@ -1004,14 +1057,14 @@ export function GenericEpicCreator() {
 
   // Render the Create New Epic template selection form
   const renderNewEpicForm = () => {
-    const selectedTemplateData = templates.find((t) => t.id === selectedTemplate);
+    const selectedTemplateData = templates.find(
+      (t) => t.id === selectedTemplate,
+    );
 
     return (
       <div className="space-y-3">
         {templatesLoading && (
-          <div className="text-xs text-gray-400 py-2">
-            Loading templates...
-          </div>
+          <div className="text-xs text-gray-400 py-2">Loading templates...</div>
         )}
 
         {templatesError && (
@@ -1032,7 +1085,8 @@ export function GenericEpicCreator() {
           >
             {templates.map((template) => (
               <option key={template.id} value={template.id}>
-                {template.title || "Blank (Start from scratch)"} {template.description && `- ${template.description}`}
+                {template.title || "Blank (Start from scratch)"}{" "}
+                {template.description && `- ${template.description}`}
               </option>
             ))}
           </select>
@@ -1083,8 +1137,8 @@ export function GenericEpicCreator() {
             </div>
             <div className="text-xs">
               <div className="text-gray-400">
-                Phases: {selectedTemplateData.phases.length} |
-                Metrics: {selectedTemplateData.success_metrics.length}
+                Phases: {selectedTemplateData.phases.length} | Metrics:{" "}
+                {selectedTemplateData.success_metrics.length}
               </div>
             </div>
           </div>
@@ -1112,7 +1166,13 @@ export function GenericEpicCreator() {
       </div>
 
       {/* Step 2: Edit Plan */}
-      <div className={currentStep === "edit" ? "space-y-4 max-h-[600px] overflow-y-auto pr-2" : "hidden"}>
+      <div
+        className={
+          currentStep === "edit"
+            ? "space-y-4 max-h-[600px] overflow-y-auto pr-2"
+            : "hidden"
+        }
+      >
         {/* Title */}
         <div>
           <label className="block text-xs text-gray-400 mb-1.5">
@@ -1310,7 +1370,13 @@ export function GenericEpicCreator() {
       </div>
 
       {/* Step 3: Review & Create */}
-      <div className={currentStep === "review" ? "space-y-4 max-h-[600px] overflow-y-auto pr-2" : "hidden"}>
+      <div
+        className={
+          currentStep === "review"
+            ? "space-y-4 max-h-[600px] overflow-y-auto pr-2"
+            : "hidden"
+        }
+      >
         <div className="p-4 bg-mid-gray/5 border border-mid-gray/10 rounded space-y-3">
           <div>
             <div className="text-xs text-gray-400">Title</div>

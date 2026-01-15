@@ -129,7 +129,7 @@ pub fn assign_issue_to_agent(
         session_name: None,
         worktree_prefix: Some("handy".to_string()),
         working_labels: config.start_labels.clone(),
-        use_sandbox: false, // TODO: Get from app settings
+        use_sandbox: false,    // TODO: Get from app settings
         sandbox_ports: vec![], // Auto-detect ports from project
     };
 
@@ -615,9 +615,14 @@ pub fn set_active_epic_from_recovery(
         .enumerate()
         .map(|(i, phase)| {
             let phase_num = (i + 1) as u32;
-            let phase_subs = phase_issues.get(&phase_num).map(|v| v.as_slice()).unwrap_or(&[]);
+            let phase_subs = phase_issues
+                .get(&phase_num)
+                .map(|v| v.as_slice())
+                .unwrap_or(&[]);
             let completed = phase_subs.iter().filter(|s| s.state == "closed").count();
-            let in_progress = phase_subs.iter().any(|s| s.has_agent_working || s.state == "open");
+            let in_progress = phase_subs
+                .iter()
+                .any(|s| s.has_agent_working || s.state == "open");
 
             TrackedPhase {
                 phase_number: phase_num,

@@ -5,9 +5,7 @@
 //! - Spawning agents for agent-assisted phases
 //! - Managing phase progression
 
-use super::{
-    create_sub_issues, EpicInfo, PhaseConfig, SubIssueConfig, SubIssueInfo,
-};
+use super::{create_sub_issues, EpicInfo, PhaseConfig, SubIssueConfig, SubIssueInfo};
 use crate::devops::orchestrator;
 
 /// Maximum length for issue titles - keep them concise and readable
@@ -97,25 +95,33 @@ pub async fn start_orchestration(
     };
 
     // First, check for existing sub-issues for this epic
-    let existing_issues = github::list_issues_async(&epic.repo, vec![]).await.unwrap_or_default();
+    let existing_issues = github::list_issues_async(&epic.repo, vec![])
+        .await
+        .unwrap_or_default();
     let existing_phase_issues: std::collections::HashMap<u32, _> = existing_issues
         .iter()
         .filter(|issue| {
-            issue.body.as_ref()
+            issue
+                .body
+                .as_ref()
                 .map(|b| b.contains(&format!("Epic**: #{}", epic.epic_number)))
                 .unwrap_or(false)
         })
         .filter_map(|issue| {
             // Extract phase number from body
-            issue.body.as_ref().and_then(|body| {
-                body.lines()
-                    .find(|line| line.contains("**Phase**:"))
-                    .and_then(|line| {
-                        line.split("**Phase**:")
-                            .nth(1)
-                            .and_then(|s| s.trim().parse::<u32>().ok())
-                    })
-            }).map(|phase| (phase, issue))
+            issue
+                .body
+                .as_ref()
+                .and_then(|body| {
+                    body.lines()
+                        .find(|line| line.contains("**Phase**:"))
+                        .and_then(|line| {
+                            line.split("**Phase**:")
+                                .nth(1)
+                                .and_then(|s| s.trim().parse::<u32>().ok())
+                        })
+                })
+                .map(|phase| (phase, issue))
         })
         .collect();
 
@@ -197,9 +203,8 @@ pub async fn start_orchestration(
     if config.auto_spawn_agents {
         // Validate worktree_base is a valid git repository path
         let worktree_path = std::path::Path::new(&config.worktree_base);
-        let is_valid_git_repo = worktree_path.exists()
-            && worktree_path.is_dir()
-            && worktree_path.join(".git").exists();
+        let is_valid_git_repo =
+            worktree_path.exists() && worktree_path.is_dir() && worktree_path.join(".git").exists();
 
         if !is_valid_git_repo {
             result.warnings.push(format!(
@@ -341,7 +346,7 @@ fn spawn_agent_for_issue(
         session_name: None,
         worktree_prefix: Some("handy-agent".to_string()),
         working_labels: vec!["staging".to_string()],
-        use_sandbox: false, // TODO: Pass from config
+        use_sandbox: false,    // TODO: Pass from config
         sandbox_ports: vec![], // Auto-detect ports from project
     };
 
@@ -400,16 +405,10 @@ pub async fn get_epic_phase_status(
             .collect();
 
         let total = phase_issues.len() as u32;
-        let completed = phase_issues
-            .iter()
-            .filter(|i| i.state == "closed")
-            .count() as u32;
+        let completed = phase_issues.iter().filter(|i| i.state == "closed").count() as u32;
         let in_progress = phase_issues
             .iter()
-            .filter(|i| {
-                i.state == "open"
-                    && i.labels.iter().any(|l| l == "staging")
-            })
+            .filter(|i| i.state == "open" && i.labels.iter().any(|l| l == "staging"))
             .count() as u32;
 
         let status = if total == 0 {

@@ -493,7 +493,10 @@ pub struct RecoveryResult {
 /// Sessions with `RecoveryAction::Resume` are left as-is (already running).
 ///
 /// Returns results for each session that was processed.
-pub fn recover_all_sessions(auto_restart: bool, auto_cleanup: bool) -> Result<Vec<RecoveryResult>, String> {
+pub fn recover_all_sessions(
+    auto_restart: bool,
+    auto_cleanup: bool,
+) -> Result<Vec<RecoveryResult>, String> {
     let sessions = recover_sessions()?;
     let mut results = Vec::new();
 
@@ -608,10 +611,7 @@ impl PortMapping {
     /// Format as Docker -p argument
     pub fn to_docker_arg(&self) -> String {
         match &self.protocol {
-            Some(proto) => format!(
-                "-p {}:{}/{}",
-                self.host_port, self.container_port, proto
-            ),
+            Some(proto) => format!("-p {}:{}/{}", self.host_port, self.container_port, proto),
             None => format!("-p {}:{}", self.host_port, self.container_port),
         }
     }
@@ -656,7 +656,13 @@ fn build_sandboxed_agent_command(
     use super::docker;
 
     // First get the base agent command
-    let inner_command = build_agent_command_inner(agent_type, repo, issue_number, issue_title, config.auto_accept)?;
+    let inner_command = build_agent_command_inner(
+        agent_type,
+        repo,
+        issue_number,
+        issue_title,
+        config.auto_accept,
+    )?;
 
     // Build docker run command
     let container_name = format!("handy-sandbox-{}", issue_number);
@@ -731,10 +737,7 @@ fn build_sandboxed_agent_command(
     docker_args.push("sh -c".to_string());
 
     // Install Claude Code and run the agent command
-    let install_and_run = format!(
-        "npm install -g @anthropic/claude-code && {}",
-        inner_command
-    );
+    let install_and_run = format!("npm install -g @anthropic/claude-code && {}", inner_command);
     docker_args.push(format!("'{}'", install_and_run.replace('\'', "'\\''")));
 
     Ok(docker_args.join(" "))
@@ -861,13 +864,8 @@ pub fn start_sandboxed_agent_in_session(
     issue_title: Option<&str>,
     sandbox_config: &SandboxedAgentConfig,
 ) -> Result<(), String> {
-    let command = build_sandboxed_agent_command(
-        agent_type,
-        repo,
-        issue_number,
-        issue_title,
-        sandbox_config,
-    )?;
+    let command =
+        build_sandboxed_agent_command(agent_type, repo, issue_number, issue_title, sandbox_config)?;
     send_command(session_name, &command)
 }
 

@@ -20,7 +20,8 @@ use specta::Type;
 use std::process::Command;
 
 /// Anthropic's official devcontainer feature for Claude Code
-const CLAUDE_DEVCONTAINER_FEATURE: &str = "ghcr.io/anthropics/devcontainer-features/claude-code:1.0";
+const CLAUDE_DEVCONTAINER_FEATURE: &str =
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0";
 
 /// Default Docker image for direct Docker mode (Node.js based for Claude Code CLI)
 const DEFAULT_AGENT_IMAGE: &str = "node:20-bookworm";
@@ -214,8 +215,11 @@ pub fn list_network_containers() -> Result<Vec<String>, String> {
 
     let output = Command::new("docker")
         .args([
-            "network", "inspect", AGENT_NETWORK,
-            "--format", "{{range .Containers}}{{.Name}} {{end}}"
+            "network",
+            "inspect",
+            AGENT_NETWORK,
+            "--format",
+            "{{range .Containers}}{{.Name}} {{end}}",
         ])
         .output()
         .map_err(|e| format!("Failed to inspect network: {}", e))?;
@@ -248,7 +252,9 @@ fn get_gh_token() -> Option<String> {
 
 /// Get the Anthropic API key from environment
 fn get_anthropic_key() -> Option<String> {
-    std::env::var("ANTHROPIC_API_KEY").ok().filter(|s| !s.is_empty())
+    std::env::var("ANTHROPIC_API_KEY")
+        .ok()
+        .filter(|s| !s.is_empty())
 }
 
 /// Generate a container name for an issue
@@ -335,7 +341,8 @@ pub fn spawn_sandbox(config: &SandboxConfig) -> Result<SandboxResult, String> {
     args.push(image);
 
     // Build the agent command based on type
-    let agent_cmd = build_sandboxed_agent_command(&config.agent_type, &config.issue_ref, config.auto_accept)?;
+    let agent_cmd =
+        build_sandboxed_agent_command(&config.agent_type, &config.issue_ref, config.auto_accept)?;
 
     // Add command as shell execution
     args.push("sh".to_string());
@@ -609,7 +616,9 @@ pub fn generate_devcontainer_json(config: &DevContainerConfig) -> String {
             features_map.insert(feature.id.clone(), serde_json::json!({}));
         } else {
             // Convert string options to JSON values
-            let options_obj: serde_json::Map<String, serde_json::Value> = feature.options.iter()
+            let options_obj: serde_json::Map<String, serde_json::Value> = feature
+                .options
+                .iter()
                 .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
                 .collect();
             features_map.insert(feature.id.clone(), serde_json::Value::Object(options_obj));
@@ -660,15 +669,23 @@ pub fn setup_devcontainer_for_worktree(
 
     // Add environment variables for credentials
     if let Some(token) = gh_token {
-        config.container_env.insert("GH_TOKEN".to_string(), token.to_string());
-        config.container_env.insert("GITHUB_TOKEN".to_string(), token.to_string());
+        config
+            .container_env
+            .insert("GH_TOKEN".to_string(), token.to_string());
+        config
+            .container_env
+            .insert("GITHUB_TOKEN".to_string(), token.to_string());
     }
     if let Some(key) = anthropic_key {
-        config.container_env.insert("ANTHROPIC_API_KEY".to_string(), key.to_string());
+        config
+            .container_env
+            .insert("ANTHROPIC_API_KEY".to_string(), key.to_string());
     }
 
     // Add issue context
-    config.container_env.insert("HANDY_ISSUE_REF".to_string(), issue_ref.to_string());
+    config
+        .container_env
+        .insert("HANDY_ISSUE_REF".to_string(), issue_ref.to_string());
 
     // Generate and write the devcontainer.json
     let json_content = generate_devcontainer_json(&config);
@@ -694,7 +711,8 @@ pub fn is_devcontainer_cli_available() -> bool {
 pub fn start_devcontainer(worktree_path: &str) -> Result<String, String> {
     if !is_devcontainer_cli_available() {
         return Err(
-            "devcontainer CLI not found. Install with: npm install -g @devcontainers/cli".to_string()
+            "devcontainer CLI not found. Install with: npm install -g @devcontainers/cli"
+                .to_string(),
         );
     }
 
@@ -720,7 +738,14 @@ pub fn exec_in_devcontainer(worktree_path: &str, command: &str) -> Result<String
     }
 
     let output = Command::new("devcontainer")
-        .args(["exec", "--workspace-folder", worktree_path, "sh", "-c", command])
+        .args([
+            "exec",
+            "--workspace-folder",
+            worktree_path,
+            "sh",
+            "-c",
+            command,
+        ])
         .output()
         .map_err(|e| format!("Failed to exec in devcontainer: {}", e))?;
 

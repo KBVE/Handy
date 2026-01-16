@@ -1956,6 +1956,19 @@ async updateEpicSubIssueAgent(issueNumber: number, sessionName: string | null, a
 }
 },
 /**
+ * Update the local repository path for the active Epic.
+ * 
+ * This path is used when spawning agents to know where to create worktrees.
+ */
+async setEpicLocalRepoPath(localRepoPath: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_epic_local_repo_path", { localRepoPath }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Handle pipeline item completion and optionally update Epic on GitHub.
  * 
  * Call this when a sub-issue is completed (PR merged, issue closed).
@@ -1965,6 +1978,37 @@ async updateEpicSubIssueAgent(issueNumber: number, sessionName: string | null, a
 async onPipelineItemComplete(issueNumber: number, updateGithub: boolean) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("on_pipeline_item_complete", { issueNumber, updateGithub }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Merge a PR for a sub-issue that's in "Ready" state
+ * 
+ * This command:
+ * 1. Finds the PR associated with the sub-issue
+ * 2. Merges the PR (squash merge by default)
+ * 3. Syncs the Epic state to update status
+ * 4. Returns info about whether next phase can start
+ */
+async mergeReadyPr(issueNumber: number, mergeMethod: string | null, deleteBranch: boolean) : Promise<Result<MergeResult, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("merge_ready_pr", { issueNumber, mergeMethod, deleteBranch }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Process all "Ready" sub-issues for the active Epic
+ * 
+ * This command finds all sub-issues with PRs (Ready state) and merges them.
+ * After each merge, it checks if the phase is complete and can start the next phase.
+ */
+async processReadyPrs(mergeMethod: string | null, deleteBranch: boolean, autoStartNextPhase: boolean) : Promise<Result<ProcessReadyResult, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("process_ready_prs", { mergeMethod, deleteBranch, autoStartNextPhase }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -2330,6 +2374,10 @@ tracking_repo: string;
  * Work repository (where code is written)
  */
 work_repo: string; 
+/**
+ * Local filesystem path to the repository (for agent spawning)
+ */
+local_repo_path?: string | null; 
 /**
  * Epic title
  */
@@ -2826,7 +2874,15 @@ url: string;
 /**
  * Whether an agent is currently working on it
  */
-has_agent_working: boolean }
+has_agent_working: boolean; 
+/**
+ * PR URL if a PR has been created for this issue
+ */
+pr_url: string | null; 
+/**
+ * PR number if a PR has been created
+ */
+pr_number: number | null }
 /**
  * Output mode for filler word detection
  */
@@ -3051,6 +3107,42 @@ export type MemoryStatus = { is_running: boolean; model_loaded: boolean; total_m
  * User info with memory count
  */
 export type MemoryUserInfo = { user_id: string; memory_count: number }
+/**
+ * Result of merging a single PR
+ */
+export type MergeResult = { 
+/**
+ * Issue number that was merged
+ */
+issue_number: number; 
+/**
+ * PR number that was merged
+ */
+pr_number: number; 
+/**
+ * PR URL
+ */
+pr_url: string; 
+/**
+ * Whether the merge was successful
+ */
+success: boolean; 
+/**
+ * Error message if merge failed
+ */
+error: string | null; 
+/**
+ * Phase this issue belongs to
+ */
+phase: number | null; 
+/**
+ * Whether this phase is now complete (all issues closed)
+ */
+phase_complete: boolean; 
+/**
+ * Next phase number if phase is complete and there's more work
+ */
+next_phase: number | null }
 export type ModelInfo = { id: string; name: string; description: string; filename: string; url: string | null; size_mb: number; is_downloaded: boolean; is_downloading: boolean; partial_size: number; is_directory: boolean; engine_type: EngineType; accuracy_score: number; speed_score: number }
 export type ModelLoadStatus = { is_loaded: boolean; current_model: string | null }
 export type ModelUnloadTimeout = "never" | "immediately" | "min_2" | "min_5" | "min_10" | "min_15" | "hour_1" | "sec_5"
@@ -3488,6 +3580,26 @@ checks: PrCheckStatus;
  * Review status
  */
 reviews: PrReviewStatus }
+/**
+ * Result of processing all ready PRs
+ */
+export type ProcessReadyResult = { 
+/**
+ * Individual merge results
+ */
+merges: MergeResult[]; 
+/**
+ * Phases that are now complete
+ */
+completed_phases: number[]; 
+/**
+ * Next phase to work on (if any)
+ */
+next_phase: number | null; 
+/**
+ * Whether agents were auto-started for next phase
+ */
+agents_started: boolean }
 export type RecordingRetentionPeriod = "never" | "preserve_limit" | "days_3" | "weeks_2" | "months_3"
 /**
  * A session recovered during startup

@@ -96,8 +96,8 @@ pub async fn start_orchestration(
         config.phases.clone()
     };
 
-    // First, check for existing sub-issues for this epic
-    let existing_issues = github::list_issues_async(&epic.repo, vec![]).await.unwrap_or_default();
+    // First, check for existing sub-issues for this epic (include closed to avoid re-creating)
+    let existing_issues = github::list_all_issues_async(&epic.repo, vec![]).await.unwrap_or_default();
     let existing_phase_issues: std::collections::HashMap<u32, _> = existing_issues
         .iter()
         .filter(|issue| {
@@ -380,8 +380,8 @@ pub async fn get_epic_phase_status(
     let epic_body = epic_issue.body.unwrap_or_default();
     let body_statuses = extract_phase_statuses_from_body(&epic_body);
 
-    // Get all issues that reference this epic
-    let all_issues = github::list_issues_async(epic_repo, vec![]).await?;
+    // Get all issues that reference this epic (include closed to count completions)
+    let all_issues = github::list_all_issues_async(epic_repo, vec![]).await?;
 
     let mut phase_statuses = Vec::new();
 

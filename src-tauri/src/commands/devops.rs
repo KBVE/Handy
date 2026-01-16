@@ -1043,6 +1043,18 @@ pub fn update_epic_sub_issue_agent(
     )
 }
 
+/// Update the local repository path for the active Epic.
+///
+/// This path is used when spawning agents to know where to create worktrees.
+#[tauri::command]
+#[specta::specta]
+pub fn set_epic_local_repo_path(
+    app: AppHandle,
+    local_repo_path: String,
+) -> Result<(), String> {
+    crate::devops::orchestration::set_epic_local_repo_path(&app, &local_repo_path)
+}
+
 /// Handle pipeline item completion and optionally update Epic on GitHub.
 ///
 /// Call this when a sub-issue is completed (PR merged, issue closed).
@@ -1057,6 +1069,46 @@ pub async fn on_pipeline_item_complete(
 ) -> Result<(), String> {
     crate::devops::orchestration::on_pipeline_item_complete(&app, issue_number, update_github)
         .await
+}
+
+/// Merge a PR for a sub-issue that's in "Ready" state
+///
+/// This command:
+/// 1. Finds the PR associated with the sub-issue
+/// 2. Merges the PR (squash merge by default)
+/// 3. Syncs the Epic state to update status
+/// 4. Returns info about whether next phase can start
+#[tauri::command]
+#[specta::specta]
+pub async fn merge_ready_pr(
+    app: AppHandle,
+    issue_number: u32,
+    merge_method: Option<String>,
+    delete_branch: bool,
+) -> Result<crate::devops::orchestration::MergeResult, String> {
+    crate::devops::orchestration::merge_ready_pr(&app, issue_number, merge_method.as_deref(), delete_branch)
+        .await
+}
+
+/// Process all "Ready" sub-issues for the active Epic
+///
+/// This command finds all sub-issues with PRs (Ready state) and merges them.
+/// After each merge, it checks if the phase is complete and can start the next phase.
+#[tauri::command]
+#[specta::specta]
+pub async fn process_ready_prs(
+    app: AppHandle,
+    merge_method: Option<String>,
+    delete_branch: bool,
+    auto_start_next_phase: bool,
+) -> Result<crate::devops::orchestration::ProcessReadyResult, String> {
+    crate::devops::orchestration::process_ready_prs(
+        &app,
+        merge_method.as_deref(),
+        delete_branch,
+        auto_start_next_phase,
+    )
+    .await
 }
 
 // ============================================================================

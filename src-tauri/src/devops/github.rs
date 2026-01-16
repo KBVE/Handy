@@ -1248,6 +1248,32 @@ pub async fn list_issues_async(
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
+/// Async wrapper for list_issues that includes ALL issues (open and closed)
+/// Used for Epic tracking to maintain historical context
+pub async fn list_all_issues_async(
+    repo: &str,
+    labels: Vec<String>,
+) -> Result<Vec<GitHubIssue>, String> {
+    tokio::task::spawn_blocking({
+        let repo = repo.to_string();
+        move || {
+            let label_strs: Vec<&str> = labels.iter().map(|s| s.as_str()).collect();
+            list_issues(
+                &repo,
+                Some("all"), // Include both open and closed issues
+                if label_strs.is_empty() {
+                    None
+                } else {
+                    Some(label_strs)
+                },
+                None,
+            )
+        }
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
 /// Async wrapper for create_issue
 pub async fn create_issue_async(repo: &str, title: &str, body: &str) -> Result<u32, String> {
     tokio::task::spawn_blocking({
@@ -1365,6 +1391,49 @@ pub async fn add_pr_labels_async(
             }
 
             Ok(())
+        }
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// Find PRs that reference a specific issue number (async)
+///
+/// Searches PR bodies for references like "Fixes #123", "Closes #123", "Resolves #123",
+/// or simple "#123" references. Returns all matching PRs.
+pub async fn find_prs_for_issue_async(
+    repo: &str,
+    issue_number: u32,
+) -> Result<Vec<GitHubPullRequest>, String> {
+    tokio::task::spawn_blocking({
+        let repo = repo.to_string();
+        move || {
+            let mut found_prs = Vec::new();
+            let issue_ref = format!("#{}", issue_number);
+
+            // Check open PRs
+            if let Ok(open_prs) = list_prs(&repo, Some("open"), None, Some(100)) {
+                for pr in open_prs {
+                    if let Some(body) = &pr.body {
+                        if body.contains(&issue_ref) {
+                            found_prs.push(pr);
+                        }
+                    }
+                }
+            }
+
+            // Check merged PRs (in case we're looking at historical data)
+            if let Ok(merged_prs) = list_prs(&repo, Some("merged"), None, Some(50)) {
+                for pr in merged_prs {
+                    if let Some(body) = &pr.body {
+                        if body.contains(&issue_ref) && !found_prs.iter().any(|p| p.number == pr.number) {
+                            found_prs.push(pr);
+                        }
+                    }
+                }
+            }
+
+            Ok(found_prs)
         }
     })
     .await

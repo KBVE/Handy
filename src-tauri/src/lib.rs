@@ -617,7 +617,10 @@ pub fn run() {
         commands::devops::clear_active_epic_state,
         commands::devops::sync_active_epic_state,
         commands::devops::update_epic_sub_issue_agent,
+        commands::devops::set_epic_local_repo_path,
         commands::devops::on_pipeline_item_complete,
+        commands::devops::merge_ready_pr,
+        commands::devops::process_ready_prs,
         // Docker sandbox commands
         commands::devops::is_docker_available,
         commands::devops::spawn_sandbox,

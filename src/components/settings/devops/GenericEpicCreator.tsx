@@ -139,13 +139,33 @@ export function GenericEpicCreator() {
   const [orchestrating, setOrchestrating] = useState(false);
   const [orchestrationResult, setOrchestrationResult] = useState<OrchestrationResult | null>(null);
   const [autoSpawnAgents, setAutoSpawnAgents] = useState(false);
-  const [localRepoPath, setLocalRepoPath] = useState<string>("");
+  // Initialize from persisted state if available
+  const [localRepoPath, setLocalRepoPath] = useState<string>(activeEpic?.local_repo_path || "");
   const [repoPathSuggestions, setRepoPathSuggestions] = useState<string[]>([]);
   const [spawningIssue, setSpawningIssue] = useState<number | null>(null);
+
+  // Save local repo path when it changes
+  const handleLocalRepoPathChange = async (path: string) => {
+    setLocalRepoPath(path);
+    if (path && activeEpic) {
+      try {
+        await invoke("set_epic_local_repo_path", { localRepoPath: path });
+      } catch (err) {
+        console.error("Failed to save local repo path:", err);
+      }
+    }
+  };
 
   // New metric/label/phase inputs
   const [newMetric, setNewMetric] = useState<string>("");
   const [newLabel, setNewLabel] = useState<string>("");
+
+  // Sync local repo path when activeEpic changes (e.g., after loading)
+  useEffect(() => {
+    if (activeEpic?.local_repo_path && !localRepoPath) {
+      setLocalRepoPath(activeEpic.local_repo_path);
+    }
+  }, [activeEpic?.local_repo_path]);
 
   // Load templates on mount
   useEffect(() => {
@@ -717,7 +737,7 @@ export function GenericEpicCreator() {
               <input
                 type="text"
                 value={localRepoPath}
-                onChange={(e) => setLocalRepoPath(e.target.value)}
+                onChange={(e) => handleLocalRepoPathChange(e.target.value)}
                 placeholder="/Users/me/projects/MyRepo"
                 className="flex-1 px-2 py-1.5 bg-mid-gray/20 border border-mid-gray/30 rounded text-xs text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
               />
@@ -730,7 +750,7 @@ export function GenericEpicCreator() {
                     });
                     setRepoPathSuggestions(suggestions);
                     if (suggestions.length > 0 && !localRepoPath) {
-                      setLocalRepoPath(suggestions[0]);
+                      handleLocalRepoPathChange(suggestions[0]);
                     }
                   } catch (err) {
                     console.error("Failed to suggest repo path:", err);
@@ -747,7 +767,7 @@ export function GenericEpicCreator() {
                   <button
                     key={idx}
                     type="button"
-                    onClick={() => setLocalRepoPath(path)}
+                    onClick={() => handleLocalRepoPathChange(path)}
                     className={`px-2 py-0.5 text-[10px] rounded transition-colors ${
                       localRepoPath === path
                         ? "bg-blue-500/30 text-blue-300"
@@ -927,7 +947,7 @@ export function GenericEpicCreator() {
                     <input
                       type="text"
                       value={localRepoPath}
-                      onChange={(e) => setLocalRepoPath(e.target.value)}
+                      onChange={(e) => handleLocalRepoPathChange(e.target.value)}
                       placeholder="/Users/me/projects/MyRepo"
                       className="flex-1 px-2 py-1.5 bg-mid-gray/20 border border-mid-gray/30 rounded text-xs text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
                     />
@@ -940,7 +960,7 @@ export function GenericEpicCreator() {
                           });
                           setRepoPathSuggestions(suggestions);
                           if (suggestions.length > 0 && !localRepoPath) {
-                            setLocalRepoPath(suggestions[0]);
+                            handleLocalRepoPathChange(suggestions[0]);
                           }
                         } catch (err) {
                           console.error("Failed to suggest repo path:", err);
@@ -957,7 +977,7 @@ export function GenericEpicCreator() {
                         <button
                           key={idx}
                           type="button"
-                          onClick={() => setLocalRepoPath(path)}
+                          onClick={() => handleLocalRepoPathChange(path)}
                           className={`px-2 py-0.5 text-[10px] rounded transition-colors ${
                             localRepoPath === path
                               ? "bg-blue-500/30 text-blue-300"

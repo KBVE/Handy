@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { invoke } from "@tauri-apps/api/core";
 import { useDevOpsStore } from "@/stores/devopsStore";
 import { toast } from "@/stores/toastStore";
 import {
@@ -15,6 +16,8 @@ import {
   Pause,
   SkipForward,
   GitPullRequest,
+  GitMerge,
+  ExternalLink,
 } from "lucide-react";
 
 export const EpicMonitor: React.FC = () => {
@@ -32,6 +35,80 @@ export const EpicMonitor: React.FC = () => {
   } = useDevOpsStore();
 
   const [markingPhase, setMarkingPhase] = useState<number | null>(null);
+  const [mergingIssue, setMergingIssue] = useState<number | null>(null);
+  const [mergingAll, setMergingAll] = useState(false);
+
+  // Handle merging a single PR
+  const handleMergePR = async (issueNumber: number) => {
+    setMergingIssue(issueNumber);
+    try {
+      const result = await invoke<{
+        success: boolean;
+        error?: string;
+        phase_complete: boolean;
+        next_phase?: number;
+      }>("merge_ready_pr", {
+        issueNumber,
+        mergeMethod: "squash",
+        deleteBranch: true,
+      });
+
+      if (result.success) {
+        toast.success(
+          t("devops.epicMonitor.mergePRSuccess"),
+          result.phase_complete
+            ? t("devops.epicMonitor.phaseCompleteMessage", { nextPhase: result.next_phase })
+            : undefined
+        );
+        // Refresh the epic state
+        checkEpicCompletions();
+      } else {
+        toast.error(t("devops.epicMonitor.mergePRFailed"), result.error);
+      }
+    } catch (err) {
+      toast.error(t("devops.epicMonitor.mergePRFailed"), String(err));
+    } finally {
+      setMergingIssue(null);
+    }
+  };
+
+  // Handle merging all ready PRs
+  const handleMergeAllReady = async () => {
+    setMergingAll(true);
+    try {
+      const result = await invoke<{
+        merges: Array<{ success: boolean; issue_number: number; error?: string }>;
+        completed_phases: number[];
+        next_phase?: number;
+      }>("process_ready_prs", {
+        mergeMethod: "squash",
+        deleteBranch: true,
+        autoStartNextPhase: false, // For now, don't auto-start - let user decide
+      });
+
+      const successCount = result.merges.filter((m) => m.success).length;
+      const failCount = result.merges.filter((m) => !m.success).length;
+
+      if (successCount > 0) {
+        toast.success(
+          t("devops.epicMonitor.mergeAllSuccess", { count: successCount }),
+          result.completed_phases.length > 0
+            ? t("devops.epicMonitor.phasesCompleted", { phases: result.completed_phases.join(", ") })
+            : undefined
+        );
+      }
+      if (failCount > 0) {
+        toast.warning(t("devops.epicMonitor.mergeAllPartialFail", { count: failCount }));
+      }
+
+      // Refresh the epic state
+      checkEpicCompletions();
+    } catch (err) {
+      toast.error(t("devops.epicMonitor.mergeAllFailed"), String(err));
+    } finally {
+      setMergingAll(false);
+    }
+  };
 
   const handleStartMonitoring = () => {
     startEpicMonitoring();
@@ -346,6 +423,80 @@ export const EpicMonitor: React.FC = () => {
                       {subIssue.session_name}
                     </span>
                   )}
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {/* Ready PRs list - PRs that are ready to merge */}
+      {readyCount > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-medium text-mid-gray">
+              {t("devops.epicMonitor.readyPRs")}
+            </h4>
+            <button
+              onClick={handleMergeAllReady}
+              disabled={mergingAll || mergingIssue !== null}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 transition-colors disabled:opacity-50"
+            >
+              {mergingAll ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <GitMerge className="w-3 h-3" />
+              )}
+              {t("devops.epicMonitor.mergeAll")}
+            </button>
+          </div>
+          <div className="space-y-1">
+            {activeEpic.sub_issues
+              .filter((s) => isOpen(s.state) && s.pr_url)
+              .map((subIssue) => (
+                <div
+                  key={subIssue.issue_number}
+                  className="flex items-center gap-2 p-2 bg-yellow-500/10 border border-yellow-500/20 rounded text-sm"
+                >
+                  <GitPullRequest className="w-4 h-4 text-yellow-400" />
+                  <a
+                    href={subIssue.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-400 hover:text-blue-300"
+                  >
+                    #{subIssue.issue_number}
+                  </a>
+                  <span className="text-mid-gray">-</span>
+                  <span className="text-white truncate flex-1">{subIssue.title}</span>
+
+                  {/* PR link */}
+                  {subIssue.pr_url && (
+                    <a
+                      href={subIssue.pr_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-xs text-mid-gray hover:text-white"
+                      title={t("devops.epicMonitor.viewPR")}
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      PR
+                    </a>
+                  )}
+
+                  {/* Merge button */}
+                  <button
+                    onClick={() => handleMergePR(subIssue.issue_number)}
+                    disabled={mergingIssue !== null || mergingAll}
+                    className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 transition-colors disabled:opacity-50"
+                    title={t("devops.epicMonitor.mergePR")}
+                  >
+                    {mergingIssue === subIssue.issue_number ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <GitMerge className="w-3 h-3" />
+                    )}
+                    {t("devops.epicMonitor.merge")}
+                  </button>
                 </div>
               ))}
           </div>

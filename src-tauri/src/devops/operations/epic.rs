@@ -316,8 +316,8 @@ pub async fn update_epic_progress(
     // Get epic issue
     let epic = github::get_issue_async(&epic_repo, epic_number).await?;
 
-    // Find all sub-issues (issues that reference this epic)
-    let all_issues = github::list_issues_async(&epic_repo, vec![]).await?;
+    // Find all sub-issues (issues that reference this epic) - include closed for accurate counts
+    let all_issues = github::list_all_issues_async(&epic_repo, vec![]).await?;
     let sub_issues: Vec<_> = all_issues
         .into_iter()
         .filter(|issue| {
@@ -329,9 +329,9 @@ pub async fn update_epic_progress(
         })
         .collect();
 
-    // Count completed (state == "closed")
+    // Count completed (use case-insensitive comparison since GitHub returns uppercase)
     let total = sub_issues.len();
-    let completed = sub_issues.iter().filter(|i| i.state == "closed").count();
+    let completed = sub_issues.iter().filter(|i| i.state.eq_ignore_ascii_case("closed")).count();
     let percentage = if total > 0 {
         (completed * 100) / total
     } else {
@@ -443,6 +443,10 @@ pub struct ExistingSubIssue {
     pub url: String,
     /// Whether an agent is currently working on it
     pub has_agent_working: bool,
+    /// PR URL if a PR has been created for this issue
+    pub pr_url: Option<String>,
+    /// PR number if a PR has been created
+    pub pr_number: Option<u64>,
 }
 
 /// Recovery information for an epic
@@ -476,9 +480,11 @@ pub async fn load_epic_for_recovery(repo: String, epic_number: u32) -> Result<Ep
     // Load basic epic info
     let epic = load_epic(repo.clone(), epic_number).await?;
 
-    // Find all sub-issues that reference this epic
-    let all_issues = github::list_issues_async(&repo, vec![]).await?;
-    let sub_issues: Vec<ExistingSubIssue> = all_issues
+    // Find all sub-issues that reference this epic (include closed for historical context)
+    let all_issues = github::list_all_issues_async(&repo, vec![]).await?;
+
+    // First pass: collect basic issue info
+    let basic_sub_issues: Vec<_> = all_issues
         .into_iter()
         .filter(|issue| {
             issue
@@ -502,21 +508,47 @@ pub async fn load_epic_for_recovery(repo: String, epic_number: u32) -> Result<Ep
 
             let has_agent_working = issue.labels.iter().any(|l| l == "staging");
 
-            ExistingSubIssue {
-                issue_number: issue.number as u32,
-                title: issue.title,
-                phase,
-                state: issue.state,
-                labels: issue.labels,
-                url: issue.url,
-                has_agent_working,
-            }
+            (issue.number as u32, issue.title, phase, issue.state, issue.labels, issue.url, has_agent_working)
         })
         .collect();
 
-    // Calculate progress
+    // Second pass: look up PRs for open sub-issues (to detect "Ready" state)
+    // We use the work_repo for PR lookups since PRs are created there
+    let work_repo = &epic.work_repo;
+    let mut sub_issues: Vec<ExistingSubIssue> = Vec::new();
+
+    for (issue_number, title, phase, state, labels, url, has_agent_working) in basic_sub_issues {
+        // Only look up PRs for open issues (closed issues are already done)
+        let (pr_url, pr_number) = if state.eq_ignore_ascii_case("open") {
+            // Try to find a PR that references this issue
+            match github::find_prs_for_issue_async(work_repo, issue_number).await {
+                Ok(prs) if !prs.is_empty() => {
+                    // Take the first (most recent) PR
+                    let pr = &prs[0];
+                    (Some(pr.url.clone()), Some(pr.number))
+                }
+                _ => (None, None),
+            }
+        } else {
+            (None, None)
+        };
+
+        sub_issues.push(ExistingSubIssue {
+            issue_number,
+            title,
+            phase,
+            state,
+            labels,
+            url,
+            has_agent_working,
+            pr_url,
+            pr_number,
+        });
+    }
+
+    // Calculate progress (use case-insensitive comparison since GitHub returns uppercase)
     let total = sub_issues.len();
-    let completed = sub_issues.iter().filter(|i| i.state == "closed").count();
+    let completed = sub_issues.iter().filter(|i| i.state.eq_ignore_ascii_case("closed")).count();
     let percentage = if total > 0 { (completed * 100) / total } else { 0 };
 
     let progress = EpicProgress {
@@ -536,11 +568,11 @@ pub async fn load_epic_for_recovery(repo: String, epic_number: u32) -> Result<Ep
         .filter(|p| !phases_with_issues.contains(p))
         .collect();
 
-    // Find issues ready for agents
+    // Find issues ready for agents (use case-insensitive comparison)
     let ready_for_agents: Vec<ExistingSubIssue> = sub_issues
         .iter()
         .filter(|i| {
-            i.state == "open"
+            i.state.eq_ignore_ascii_case("open")
                 && i.labels.iter().any(|l| l == "todo")
                 && !i.has_agent_working
         })

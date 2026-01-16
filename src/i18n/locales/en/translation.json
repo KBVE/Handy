@@ -933,7 +933,19 @@
       "markComplete": "Mark Complete",
       "phaseUpdated": "Phase Updated",
       "phaseUpdatedMessage": "Phase {{phase}} marked as {{status}}",
-      "phaseUpdateFailed": "Failed to update phase status"
+      "phaseUpdateFailed": "Failed to update phase status",
+      "readyPRs": "Ready PRs",
+      "mergeAll": "Merge All",
+      "merge": "Merge",
+      "mergePR": "Merge this PR",
+      "viewPR": "View PR on GitHub",
+      "mergePRSuccess": "PR Merged Successfully",
+      "mergePRFailed": "Failed to merge PR",
+      "phaseCompleteMessage": "Phase complete! Next phase: {{nextPhase}}",
+      "mergeAllSuccess": "Merged {{count}} PR(s)",
+      "mergeAllPartialFail": "{{count}} PR(s) failed to merge",
+      "mergeAllFailed": "Failed to process PRs",
+      "phasesCompleted": "Completed phases: {{phases}}"
     },
     "worktrees": {
       "title": "Git Worktrees",

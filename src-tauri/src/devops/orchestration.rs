@@ -473,6 +473,9 @@ pub struct ActiveEpicState {
     pub tracking_repo: String,
     /// Work repository (where code is written)
     pub work_repo: String,
+    /// Local filesystem path to the repository (for agent spawning)
+    #[serde(default)]
+    pub local_repo_path: Option<String>,
     /// Epic title
     pub title: String,
     /// Epic URL
@@ -586,10 +589,17 @@ pub fn set_active_epic(app: &AppHandle, epic_info: &EpicInfo) -> ActiveEpicState
         })
         .collect();
 
+    // Preserve existing local_repo_path if we're re-linking the same epic
+    let existing_local_path = state.active_epic
+        .as_ref()
+        .filter(|e| e.epic_number == epic_info.epic_number)
+        .and_then(|e| e.local_repo_path.clone());
+
     let active = ActiveEpicState {
         epic_number: epic_info.epic_number,
         tracking_repo: epic_info.repo.clone(),
         work_repo: epic_info.work_repo.clone(),
+        local_repo_path: existing_local_path,
         title: epic_info.title.clone(),
         url: epic_info.url.clone(),
         phases: tracked_phases,
@@ -697,13 +707,14 @@ pub fn set_active_epic_from_recovery(
         .map(|(i, phase)| {
             let phase_num = (i + 1) as u32;
             let phase_subs = phase_issues.get(&phase_num).map(|v| v.as_slice()).unwrap_or(&[]);
-            let completed = phase_subs.iter().filter(|s| s.state == "closed").count();
+            // Use case-insensitive comparison since GitHub returns uppercase state
+            let completed = phase_subs.iter().filter(|s| s.state.eq_ignore_ascii_case("closed")).count();
 
             // Check for active agents: either has_agent_working from labels OR has active session
             let has_active_agent = phase_subs.iter().any(|s| {
                 s.has_agent_working || issue_to_session.contains_key(&s.issue_number)
             });
-            let in_progress = has_active_agent || phase_subs.iter().any(|s| s.state == "open");
+            let in_progress = has_active_agent || phase_subs.iter().any(|s| s.state.eq_ignore_ascii_case("open"));
 
             // Determine status:
             // 1. If there are sub-issues, use their status
@@ -741,7 +752,11 @@ pub fn set_active_epic_from_recovery(
         .iter()
         .map(|s| {
             let session_name = issue_to_session.get(&s.issue_number).cloned();
-            let has_agent = s.has_agent_working || session_name.is_some();
+            // Only mark as having agent if issue is open - closed issues don't need agents
+            let is_closed = s.state.eq_ignore_ascii_case("closed");
+            // If PR exists, agent work is done (even if session still exists)
+            let has_pr = s.pr_url.is_some();
+            let has_agent = !is_closed && !has_pr && (s.has_agent_working || session_name.is_some());
 
             TrackedSubIssue {
                 issue_number: s.issue_number,
@@ -749,20 +764,27 @@ pub fn set_active_epic_from_recovery(
                 phase: s.phase,
                 state: s.state.to_lowercase(), // Normalize to lowercase for consistent comparison
                 agent_type: None, // Will be filled when agent is assigned
-                session_name: session_name.clone(),
-                agent_session: session_name,
+                session_name: if is_closed { None } else { session_name.clone() },
+                agent_session: if is_closed { None } else { session_name },
                 has_agent_working: has_agent,
                 url: s.url.clone(),
-                pr_url: None,
-                pr_number: None,
+                pr_url: s.pr_url.clone(),
+                pr_number: s.pr_number,
             }
         })
         .collect();
+
+    // Preserve existing local_repo_path if we're re-loading the same epic
+    let existing_local_path = state.active_epic
+        .as_ref()
+        .filter(|e| e.epic_number == recovery.epic.epic_number)
+        .and_then(|e| e.local_repo_path.clone());
 
     let active = ActiveEpicState {
         epic_number: recovery.epic.epic_number,
         tracking_repo: recovery.epic.repo.clone(),
         work_repo: recovery.epic.work_repo.clone(),
+        local_repo_path: existing_local_path,
         title: recovery.epic.title.clone(),
         url: recovery.epic.url.clone(),
         phases: tracked_phases,
@@ -781,6 +803,20 @@ pub fn set_active_epic_from_recovery(
 pub fn get_active_epic(app: &AppHandle) -> Option<ActiveEpicState> {
     let state = load_epic_state(app);
     state.active_epic
+}
+
+/// Update the local repository path for the active Epic.
+pub fn set_epic_local_repo_path(app: &AppHandle, local_repo_path: &str) -> Result<(), String> {
+    let mut state = load_epic_state(app);
+
+    if let Some(ref mut active) = state.active_epic {
+        active.local_repo_path = Some(local_repo_path.to_string());
+        save_epic_state(app, &state);
+        log::info!("Updated Epic local_repo_path to: {}", local_repo_path);
+        Ok(())
+    } else {
+        Err("No active Epic to update".to_string())
+    }
 }
 
 /// Clear the active Epic (move to history if completed).
@@ -1097,6 +1133,224 @@ fn update_sub_issue_pr_url(
 
         save_epic_state(app, &state);
     }
+}
+
+// ============================================================================
+// PR Merge Commands for Ready State
+// ============================================================================
+
+/// Result of merging a single PR
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct MergeResult {
+    /// Issue number that was merged
+    pub issue_number: u32,
+    /// PR number that was merged
+    pub pr_number: u64,
+    /// PR URL
+    pub pr_url: String,
+    /// Whether the merge was successful
+    pub success: bool,
+    /// Error message if merge failed
+    pub error: Option<String>,
+    /// Phase this issue belongs to
+    pub phase: Option<u32>,
+    /// Whether this phase is now complete (all issues closed)
+    pub phase_complete: bool,
+    /// Next phase number if phase is complete and there's more work
+    pub next_phase: Option<u32>,
+}
+
+/// Result of processing all ready PRs
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct ProcessReadyResult {
+    /// Individual merge results
+    pub merges: Vec<MergeResult>,
+    /// Phases that are now complete
+    pub completed_phases: Vec<u32>,
+    /// Next phase to work on (if any)
+    pub next_phase: Option<u32>,
+    /// Whether agents were auto-started for next phase
+    pub agents_started: bool,
+}
+
+/// Merge a PR for a sub-issue that's in "Ready" state
+pub async fn merge_ready_pr(
+    app: &AppHandle,
+    issue_number: u32,
+    merge_method: Option<&str>,
+    delete_branch: bool,
+) -> Result<MergeResult, String> {
+    let state = load_epic_state(app);
+
+    let active = state
+        .active_epic
+        .as_ref()
+        .ok_or("No active Epic")?;
+
+    // Find the sub-issue
+    let sub_issue = active
+        .sub_issues
+        .iter()
+        .find(|s| s.issue_number == issue_number)
+        .ok_or_else(|| format!("Sub-issue #{} not found in active Epic", issue_number))?;
+
+    // Check it has a PR
+    let pr_url = sub_issue
+        .pr_url
+        .as_ref()
+        .ok_or_else(|| format!("Sub-issue #{} has no PR to merge", issue_number))?;
+
+    let pr_number = sub_issue
+        .pr_number
+        .ok_or_else(|| format!("Sub-issue #{} has no PR number", issue_number))?;
+
+    let phase = sub_issue.phase;
+    let work_repo = active.work_repo.clone();
+
+    // Merge the PR
+    log::info!("Merging PR #{} for issue #{}", pr_number, issue_number);
+
+    let merge_result = super::github::merge_pr(
+        &work_repo,
+        pr_number,
+        merge_method,
+        delete_branch,
+    );
+
+    match merge_result {
+        Ok(()) => {
+            log::info!("Successfully merged PR #{}", pr_number);
+
+            // Sync to get updated state (issue should now be closed if PR had "Fixes #" keyword)
+            let _ = sync_active_epic(app).await;
+
+            // Check if phase is now complete
+            let updated_state = load_epic_state(app);
+            let (phase_complete, next_phase) = if let Some(active) = &updated_state.active_epic {
+                if let Some(p) = phase {
+                    let phase_info = active.phases.iter().find(|ph| ph.phase_number == p);
+                    let is_complete = phase_info
+                        .map(|ph| ph.status == TrackedPhaseStatus::Completed)
+                        .unwrap_or(false);
+
+                    // Find next phase if this one is complete
+                    let next = if is_complete {
+                        active
+                            .phases
+                            .iter()
+                            .find(|ph| ph.status == TrackedPhaseStatus::NotStarted)
+                            .map(|ph| ph.phase_number)
+                    } else {
+                        None
+                    };
+
+                    (is_complete, next)
+                } else {
+                    (false, None)
+                }
+            } else {
+                (false, None)
+            };
+
+            Ok(MergeResult {
+                issue_number,
+                pr_number,
+                pr_url: pr_url.clone(),
+                success: true,
+                error: None,
+                phase,
+                phase_complete,
+                next_phase,
+            })
+        }
+        Err(e) => {
+            log::error!("Failed to merge PR #{}: {}", pr_number, e);
+            Ok(MergeResult {
+                issue_number,
+                pr_number,
+                pr_url: pr_url.clone(),
+                success: false,
+                error: Some(e),
+                phase,
+                phase_complete: false,
+                next_phase: None,
+            })
+        }
+    }
+}
+
+/// Process all "Ready" sub-issues for the active Epic
+pub async fn process_ready_prs(
+    app: &AppHandle,
+    merge_method: Option<&str>,
+    delete_branch: bool,
+    auto_start_next_phase: bool,
+) -> Result<ProcessReadyResult, String> {
+    // First sync to ensure we have latest state
+    sync_active_epic(app).await?;
+
+    let state = load_epic_state(app);
+    let active = state
+        .active_epic
+        .as_ref()
+        .ok_or("No active Epic")?;
+
+    // Find all sub-issues in "Ready" state (open with PR)
+    let ready_issues: Vec<u32> = active
+        .sub_issues
+        .iter()
+        .filter(|s| {
+            s.state.eq_ignore_ascii_case("open") && s.pr_url.is_some()
+        })
+        .map(|s| s.issue_number)
+        .collect();
+
+    log::info!("Found {} ready PRs to process", ready_issues.len());
+
+    let mut merges = Vec::new();
+    let mut completed_phases = Vec::new();
+
+    for issue_number in ready_issues {
+        let result = merge_ready_pr(app, issue_number, merge_method, delete_branch).await?;
+
+        if result.success && result.phase_complete {
+            if let Some(phase) = result.phase {
+                if !completed_phases.contains(&phase) {
+                    completed_phases.push(phase);
+                }
+            }
+        }
+
+        merges.push(result);
+    }
+
+    // Find next phase to work on
+    let state = load_epic_state(app);
+    let next_phase = if let Some(active) = &state.active_epic {
+        active
+            .phases
+            .iter()
+            .find(|ph| ph.status == TrackedPhaseStatus::NotStarted)
+            .map(|ph| ph.phase_number)
+    } else {
+        None
+    };
+
+    // Optionally auto-start agents for next phase
+    let agents_started = if auto_start_next_phase && next_phase.is_some() {
+        log::info!("Auto-starting agents for phase {:?}", next_phase);
+        // TODO: Implement auto-start logic - spawn agents for queued issues in next phase
+        false // Not implemented yet
+    } else {
+        false
+    };
+
+    Ok(ProcessReadyResult {
+        merges,
+        completed_phases,
+        next_phase,
+        agents_started,
+    })
 }
 
 #[cfg(test)]

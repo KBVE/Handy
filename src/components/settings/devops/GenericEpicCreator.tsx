@@ -261,6 +261,8 @@ export function GenericEpicCreator() {
           labels: [], // Not stored in TrackedSubIssue
           has_agent_working: s.has_agent_working,
           url: s.url,
+          pr_url: s.pr_url ?? null,
+          pr_number: s.pr_number ?? null,
         }));
 
         const completed = subIssues.filter((s) => s.state === "closed").length;
@@ -280,6 +282,7 @@ export function GenericEpicCreator() {
 
         const restoredRecovery: EpicRecoveryInfo = {
           epic: restoredEpic,
+          epic_body: "", // Not needed for display - only used when loading from GitHub
           sub_issues: subIssues,
           progress: {
             total: subIssues.length,
@@ -692,14 +695,16 @@ export function GenericEpicCreator() {
             </div>
             <div className="space-y-2">
               {activeEpic.phases.map((phase) => {
-                const statusColors = {
+                const statusColors: Record<string, string> = {
                   completed: "text-green-400 bg-green-500/20",
-                  in_progress: "text-yellow-400 bg-yellow-500/20",
+                  ready: "text-yellow-400 bg-yellow-500/20",
+                  in_progress: "text-blue-400 bg-blue-500/20",
                   not_started: "text-gray-400 bg-gray-500/20",
                   skipped: "text-gray-500 bg-gray-500/10",
                 };
-                const statusLabels = {
+                const statusLabels: Record<string, string> = {
                   completed: "✓ Complete",
+                  ready: "🟡 Ready",
                   in_progress: "▶ In Progress",
                   not_started: "○ Not Started",
                   skipped: "⊘ Skipped",

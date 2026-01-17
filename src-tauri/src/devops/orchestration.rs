@@ -10,7 +10,9 @@ use tauri::{AppHandle, Emitter};
 use tauri_plugin_store::StoreExt;
 
 use super::github::{self, GitHubPullRequest};
-use super::operations::agent_lifecycle::{detect_pr_for_agent, PrDetectionResult};
+use super::operations::agent_lifecycle::{
+    detect_pr_for_agent, spawn_support_worker, PrDetectionResult, SupportWorkerConfig,
+};
 use super::operations::epic::{EpicInfo, EpicRecoveryInfo, ExistingSubIssue};
 use super::orchestrator::{self, SpawnConfig, SpawnResult};
 use super::pipeline::{PipelineItem, PipelineState, PipelineStatus};
@@ -433,9 +435,11 @@ pub fn remove_pipeline_item(
 pub enum TrackedPhaseStatus {
     /// Phase not started
     NotStarted,
-    /// Phase is in progress
+    /// Phase is in progress (agents working)
     InProgress,
-    /// Phase is completed
+    /// Phase is ready (all sub-issues have PRs, waiting for merge)
+    Ready,
+    /// Phase is completed (all sub-issues closed)
     Completed,
     /// Phase was skipped
     Skipped,
@@ -640,6 +644,8 @@ fn extract_phase_statuses_from_body(body: &str) -> std::collections::HashMap<u32
                 let status_text = trimmed.trim_start_matches("**Status**:").trim();
                 let status = if status_text.contains("Complete") || status_text.contains("✅") {
                     TrackedPhaseStatus::Completed
+                } else if status_text.contains("Ready") || status_text.contains("🟡") {
+                    TrackedPhaseStatus::Ready
                 } else if status_text.contains("In Progress") || status_text.contains("🔄") {
                     TrackedPhaseStatus::InProgress
                 } else if status_text.contains("Skipped") || status_text.contains("⏭️") {
@@ -710,11 +716,24 @@ pub fn set_active_epic_from_recovery(
             // Use case-insensitive comparison since GitHub returns uppercase state
             let completed = phase_subs.iter().filter(|s| s.state.eq_ignore_ascii_case("closed")).count();
 
+            // Count open sub-issues
+            let open_subs: Vec<_> = phase_subs.iter()
+                .filter(|s| s.state.eq_ignore_ascii_case("open"))
+                .collect();
+
             // Check for active agents: either has_agent_working from labels OR has active session
+            // But NOT if the sub-issue already has a PR (agent work is done)
             let has_active_agent = phase_subs.iter().any(|s| {
-                s.has_agent_working || issue_to_session.contains_key(&s.issue_number)
+                let is_open = s.state.eq_ignore_ascii_case("open");
+                let has_pr = s.pr_url.is_some();
+                let has_agent = s.has_agent_working || issue_to_session.contains_key(&s.issue_number);
+                // Only count as active if open, has agent, but no PR yet
+                is_open && has_agent && !has_pr
             });
-            let in_progress = has_active_agent || phase_subs.iter().any(|s| s.state.eq_ignore_ascii_case("open"));
+
+            // Check if all open sub-issues have PRs (phase is "ready" for merge)
+            let all_open_have_prs = !open_subs.is_empty() &&
+                open_subs.iter().all(|s| s.pr_url.is_some());
 
             // Determine status:
             // 1. If there are sub-issues, use their status
@@ -722,7 +741,16 @@ pub fn set_active_epic_from_recovery(
             let status = if !phase_subs.is_empty() {
                 if completed == phase_subs.len() {
                     TrackedPhaseStatus::Completed
-                } else if in_progress {
+                } else if all_open_have_prs {
+                    // All remaining open issues have PRs - phase is ready for merge
+                    TrackedPhaseStatus::Ready
+                } else if has_active_agent {
+                    TrackedPhaseStatus::InProgress
+                } else if open_subs.is_empty() && completed > 0 {
+                    // All sub-issues are closed
+                    TrackedPhaseStatus::Completed
+                } else if !open_subs.is_empty() {
+                    // Has open issues but no agent working - still in progress
                     TrackedPhaseStatus::InProgress
                 } else {
                     TrackedPhaseStatus::NotStarted
@@ -978,6 +1006,7 @@ pub async fn on_pipeline_item_complete(
                             in_progress_issues: 0, // Would need to calculate from sub_issues
                             status: match p.status {
                                 TrackedPhaseStatus::Completed => "completed".to_string(),
+                                TrackedPhaseStatus::Ready => "ready".to_string(),
                                 TrackedPhaseStatus::InProgress => "in_progress".to_string(),
                                 TrackedPhaseStatus::NotStarted => "not_started".to_string(),
                                 TrackedPhaseStatus::Skipped => "skipped".to_string(),
@@ -1148,13 +1177,16 @@ pub struct MergeResult {
     pub pr_number: u64,
     /// PR URL
     pub pr_url: String,
-    /// Whether the merge was successful
+    /// Whether the support worker was spawned successfully
     pub success: bool,
-    /// Error message if merge failed
+    /// Error message if spawn failed
     pub error: Option<String>,
     /// Phase this issue belongs to
     pub phase: Option<u32>,
+    /// Support worker session name (for tracking)
+    pub support_worker_session: Option<String>,
     /// Whether this phase is now complete (all issues closed)
+    /// Note: This is only accurate after the merge completes
     pub phase_complete: bool,
     /// Next phase number if phase is complete and there's more work
     pub next_phase: Option<u32>,
@@ -1174,6 +1206,16 @@ pub struct ProcessReadyResult {
 }
 
 /// Merge a PR for a sub-issue that's in "Ready" state
+///
+/// This spawns a Support Worker agent to handle the merge process.
+/// The support worker will:
+/// 1. View the PR details
+/// 2. Check PR status and CI results
+/// 3. Merge the PR using the specified method
+/// 4. Delete the branch if requested
+///
+/// When sandbox mode is enabled, the support worker runs inside a Docker container
+/// with the worktree mounted, allowing it to resolve merge conflicts locally.
 pub async fn merge_ready_pr(
     app: &AppHandle,
     issue_number: u32,
@@ -1181,6 +1223,7 @@ pub async fn merge_ready_pr(
     delete_branch: bool,
 ) -> Result<MergeResult, String> {
     let state = load_epic_state(app);
+    let settings = crate::settings::get_settings(app);
 
     let active = state
         .active_epic
@@ -1207,51 +1250,85 @@ pub async fn merge_ready_pr(
     let phase = sub_issue.phase;
     let work_repo = active.work_repo.clone();
 
-    // Merge the PR
-    log::info!("Merging PR #{} for issue #{}", pr_number, issue_number);
+    // Get worktree path for sandboxed execution
+    // Try to get it from the agent session metadata, or construct it from the Epic's local repo path
+    let worktree_path = if settings.sandbox_enabled {
+        // First try to get from tmux session metadata
+        let session_worktree = if let Some(session_name) = &sub_issue.agent_session {
+            tokio::task::spawn_blocking({
+                let session_name = session_name.clone();
+                move || {
+                    tmux::get_session_metadata(&session_name)
+                        .ok()
+                        .and_then(|m| m.worktree)
+                }
+            })
+            .await
+            .ok()
+            .flatten()
+        } else {
+            None
+        };
 
-    let merge_result = super::github::merge_pr(
-        &work_repo,
+        // If no session worktree, try to construct from Epic's local repo path
+        session_worktree.or_else(|| {
+            active.local_repo_path.as_ref().map(|repo_path| {
+                // Worktrees are typically at <repo>/../handy-worktrees/issue-<number>
+                let base = std::path::Path::new(repo_path)
+                    .parent()
+                    .unwrap_or(std::path::Path::new(repo_path));
+                base.join("handy-worktrees")
+                    .join(format!("issue-{}", issue_number))
+                    .to_string_lossy()
+                    .to_string()
+            })
+        })
+    } else {
+        None
+    };
+
+    log::info!(
+        "Spawning support worker to merge PR #{} for issue #{} (sandbox: {}, worktree: {:?})",
         pr_number,
-        merge_method,
-        delete_branch,
+        issue_number,
+        settings.sandbox_enabled,
+        worktree_path
     );
 
-    match merge_result {
-        Ok(()) => {
-            log::info!("Successfully merged PR #{}", pr_number);
+    // Spawn a support worker to handle the merge
+    let support_config = SupportWorkerConfig {
+        repo: work_repo.clone(),
+        issue_number,
+        pr_number: Some(pr_number),
+        task: format!("Merge PR #{} for issue #{}", pr_number, issue_number),
+        task_type: "merge".to_string(),
+        merge_method: merge_method.map(|s| s.to_string()),
+        delete_branch,
+        sandboxed: settings.sandbox_enabled && worktree_path.is_some(),
+        worktree_path,
+    };
 
-            // Sync to get updated state (issue should now be closed if PR had "Fixes #" keyword)
-            let _ = sync_active_epic(app).await;
+    match spawn_support_worker(support_config).await {
+        Ok(result) => {
+            log::info!(
+                "Support worker spawned: {} for PR #{}",
+                result.session,
+                pr_number
+            );
 
-            // Check if phase is now complete
-            let updated_state = load_epic_state(app);
-            let (phase_complete, next_phase) = if let Some(active) = &updated_state.active_epic {
-                if let Some(p) = phase {
-                    let phase_info = active.phases.iter().find(|ph| ph.phase_number == p);
-                    let is_complete = phase_info
-                        .map(|ph| ph.status == TrackedPhaseStatus::Completed)
-                        .unwrap_or(false);
+            // Emit event so frontend can track the merge
+            let _ = app.emit(
+                "support-worker-spawned",
+                serde_json::json!({
+                    "session": result.session,
+                    "issue_number": issue_number,
+                    "pr_number": pr_number,
+                    "task_type": "merge",
+                }),
+            );
 
-                    // Find next phase if this one is complete
-                    let next = if is_complete {
-                        active
-                            .phases
-                            .iter()
-                            .find(|ph| ph.status == TrackedPhaseStatus::NotStarted)
-                            .map(|ph| ph.phase_number)
-                    } else {
-                        None
-                    };
-
-                    (is_complete, next)
-                } else {
-                    (false, None)
-                }
-            } else {
-                (false, None)
-            };
-
+            // Note: Phase completion will be detected on next sync after merge completes
+            // For now, return success with the session info
             Ok(MergeResult {
                 issue_number,
                 pr_number,
@@ -1259,12 +1336,13 @@ pub async fn merge_ready_pr(
                 success: true,
                 error: None,
                 phase,
-                phase_complete,
-                next_phase,
+                support_worker_session: Some(result.session),
+                phase_complete: false, // Will be updated on next sync
+                next_phase: None,
             })
         }
         Err(e) => {
-            log::error!("Failed to merge PR #{}: {}", pr_number, e);
+            log::error!("Failed to spawn support worker for PR #{}: {}", pr_number, e);
             Ok(MergeResult {
                 issue_number,
                 pr_number,
@@ -1272,6 +1350,7 @@ pub async fn merge_ready_pr(
                 success: false,
                 error: Some(e),
                 phase,
+                support_worker_session: None,
                 phase_complete: false,
                 next_phase: None,
             })

@@ -31,6 +31,7 @@ export const EpicMonitor: React.FC = () => {
     stopEpicMonitoring,
     checkEpicCompletions,
     setEpicMonitorAutoUpdate,
+    setEpicMonitorAutoStartNextPhase,
     markPhaseStatus,
   } = useDevOpsStore();
 
@@ -143,6 +144,8 @@ export const EpicMonitor: React.FC = () => {
     switch (status) {
       case "completed":
         return { icon: CheckCircle, color: "text-green-400", bgColor: "bg-green-500/10" };
+      case "ready":
+        return { icon: GitPullRequest, color: "text-yellow-400", bgColor: "bg-yellow-500/10" };
       case "in_progress":
         return { icon: Clock, color: "text-blue-400", bgColor: "bg-blue-500/10" };
       case "skipped":
@@ -321,24 +324,36 @@ export const EpicMonitor: React.FC = () => {
       </div>
 
       {/* Options */}
-      <div className="flex items-center justify-between p-3 bg-mid-gray/10 border border-mid-gray/20 rounded-lg">
+      <div className="flex flex-col gap-2 p-3 bg-mid-gray/10 border border-mid-gray/20 rounded-lg">
+        <div className="flex items-center justify-between">
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={epicMonitor.autoUpdateGithub}
+              onChange={(e) => setEpicMonitorAutoUpdate(e.target.checked)}
+              className="rounded border-mid-gray/30 bg-mid-gray/10 text-logo-primary focus:ring-logo-primary"
+            />
+            {t("devops.epicMonitor.autoUpdateGithub")}
+          </label>
+
+          {epicMonitor.lastCheck && (
+            <span className="text-xs text-mid-gray">
+              {t("devops.epicMonitor.lastCheck", {
+                time: epicMonitor.lastCheck.toLocaleTimeString(),
+              })}
+            </span>
+          )}
+        </div>
+
         <label className="flex items-center gap-2 text-sm cursor-pointer">
           <input
             type="checkbox"
-            checked={epicMonitor.autoUpdateGithub}
-            onChange={(e) => setEpicMonitorAutoUpdate(e.target.checked)}
+            checked={epicMonitor.autoStartNextPhase}
+            onChange={(e) => setEpicMonitorAutoStartNextPhase(e.target.checked)}
             className="rounded border-mid-gray/30 bg-mid-gray/10 text-logo-primary focus:ring-logo-primary"
           />
-          {t("devops.epicMonitor.autoUpdateGithub")}
+          {t("devops.epicMonitor.autoStartNextPhase")}
         </label>
-
-        {epicMonitor.lastCheck && (
-          <span className="text-xs text-mid-gray">
-            {t("devops.epicMonitor.lastCheck", {
-              time: epicMonitor.lastCheck.toLocaleTimeString(),
-            })}
-          </span>
-        )}
       </div>
 
       {/* Phase status list */}

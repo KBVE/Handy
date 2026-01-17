@@ -522,6 +522,7 @@ fn update_phases_in_body(body: &str, phase_statuses: &[PhaseStatus]) -> String {
 fn format_phase_status(status: &PhaseStatus) -> String {
     let (icon, text) = match status.status.as_str() {
         "completed" => ("✅", "Complete"),
+        "ready" => ("🟡", "Ready"),
         "in_progress" => ("🔄", "In Progress"),
         "not_started" => ("⏸️", "Not Started"),
         "skipped" => ("⏭️", "Skipped"),
@@ -586,6 +587,8 @@ fn extract_phase_statuses_from_body(body: &str) -> std::collections::HashMap<u32
                 let status_text = trimmed.trim_start_matches("**Status**:").trim();
                 let status = if status_text.contains("Complete") || status_text.contains("✅") {
                     "completed"
+                } else if status_text.contains("Ready") || status_text.contains("🟡") {
+                    "ready"
                 } else if status_text.contains("In Progress") || status_text.contains("🔄") {
                     "in_progress"
                 } else if status_text.contains("Skipped") || status_text.contains("⏭️") {

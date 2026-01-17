@@ -11,18 +11,26 @@ DEV_PORT=1420
 # Kill any existing instances to ensure a fresh start
 echo "Cleaning up any existing dev instances..."
 
-# Kill processes using the dev port
+# Kill processes using the dev ports
 if command -v lsof &> /dev/null; then
-    PORT_PIDS=$(lsof -ti:$DEV_PORT 2>/dev/null)
-    if [ -n "$PORT_PIDS" ]; then
-        echo "$PORT_PIDS" | xargs kill -9 2>/dev/null || true
-    fi
+    for port in 1420 1421; do
+        PORT_PIDS=$(lsof -ti:$port 2>/dev/null)
+        if [ -n "$PORT_PIDS" ]; then
+            echo "$PORT_PIDS" | xargs kill -9 2>/dev/null || true
+        fi
+    done
 fi
+
+# Kill any existing Tauri/Vite dev processes
+pkill -9 -f "tauri" 2>/dev/null || true
+pkill -9 -f "vite" 2>/dev/null || true
 
 # Kill any existing app instances (macOS)
 if [[ "$OSTYPE" == "darwin"* ]]; then
     pkill -f "kbve-app" 2>/dev/null || true
     pkill -f "KBVE" 2>/dev/null || true
+    pkill -f "Handy" 2>/dev/null || true
+    pkill -f "handy" 2>/dev/null || true
 fi
 
 # Kill any lingering sidecar processes

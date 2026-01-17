@@ -2316,6 +2316,49 @@ async checkSessionsForPrs() : Promise<Result<PrDetectionResult[], string>> {
 }
 },
 /**
+ * Clean up orphaned Docker containers from sandbox execution.
+ * 
+ * Finds and removes containers that match `handy-sandbox-*` or `handy-support-sandbox-*`
+ * but don't have a corresponding active tmux session.
+ * 
+ * Emits `orphan-container-cleaned` events for each cleaned container (for toast notifications).
+ */
+async cleanupOrphanedContainers() : Promise<Result<OrphanCleanupResult, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("cleanup_orphaned_containers") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Check the status of the Claude Code authentication volume.
+ * 
+ * Returns information about whether the volume exists and has credentials.
+ */
+async checkClaudeAuthVolume() : Promise<Result<ClaudeAuthVolumeStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("check_claude_auth_volume") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Launch an interactive container for Claude Code authentication.
+ * 
+ * Opens a new Terminal window with a container where the user can run `claude /login`.
+ * Credentials are saved to a persistent Docker volume for future sandbox use.
+ */
+async launchClaudeAuthSetup() : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("launch_claude_auth_setup") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Checks if the Mac is a laptop by detecting battery presence
  * 
  * This uses pmset to check for battery information.
@@ -2591,6 +2634,38 @@ export type AudioDevice = { index: string; name: string; is_default: boolean }
 export type AuthUser = { id: string; email: string | null; name: string | null; avatar_url: string | null; provider: string | null; is_authenticated: boolean }
 export type BindingResponse = { success: boolean; binding: ShortcutBinding | null; error: string | null }
 export type ChannelInfo = { id: string; name: string; kind: string }
+/**
+ * Status of the Claude Code authentication volume
+ */
+export type ClaudeAuthVolumeStatus = { 
+/**
+ * Whether the volume exists
+ */
+exists: boolean; 
+/**
+ * Whether the volume has authentication data
+ */
+has_auth: boolean; 
+/**
+ * Volume name
+ */
+volume_name: string; 
+/**
+ * Last authentication time (if known)
+ */
+last_auth: string | null }
+/**
+ * Information about a cleaned up orphan container
+ */
+export type CleanedOrphanInfo = { 
+/**
+ * Container name
+ */
+container_name: string; 
+/**
+ * Issue number associated with this container (if parseable)
+ */
+issue_number: number | null }
 export type ClipboardHandling = "dont_modify" | "copy_to_clipboard"
 /**
  * Collision check result.
@@ -3124,11 +3199,11 @@ pr_number: number;
  */
 pr_url: string; 
 /**
- * Whether the merge was successful
+ * Whether the support worker was spawned successfully
  */
 success: boolean; 
 /**
- * Error message if merge failed
+ * Error message if spawn failed
  */
 error: string | null; 
 /**
@@ -3136,7 +3211,12 @@ error: string | null;
  */
 phase: number | null; 
 /**
+ * Support worker session name (for tracking)
+ */
+support_worker_session: string | null; 
+/**
  * Whether this phase is now complete (all issues closed)
+ * Note: This is only accurate after the merge completes
  */
 phase_complete: boolean; 
 /**
@@ -3194,6 +3274,30 @@ started_phases: number[];
  * Any warnings during orchestration
  */
 warnings: string[] }
+/**
+ * Result of cleaning up orphaned containers
+ */
+export type OrphanCleanupResult = { 
+/**
+ * Number of orphaned containers found
+ */
+found: number; 
+/**
+ * Number of containers successfully removed
+ */
+removed: number; 
+/**
+ * Container names that were removed
+ */
+removed_containers: string[]; 
+/**
+ * Detailed info about cleaned containers (includes issue numbers for toasts)
+ */
+cleaned_orphans: CleanedOrphanInfo[]; 
+/**
+ * Any errors encountered
+ */
+errors: string[] }
 export type OverlayPosition = "none" | "top" | "bottom"
 export type PasteMethod = "ctrl_v" | "direct" | "none" | "shift_insert" | "ctrl_shift_v"
 /**
@@ -4042,11 +4146,15 @@ export type TrackedPhaseStatus =
  */
 "not_started" | 
 /**
- * Phase is in progress
+ * Phase is in progress (agents working)
  */
 "in_progress" | 
 /**
- * Phase is completed
+ * Phase is ready (all sub-issues have PRs, waiting for merge)
+ */
+"ready" | 
+/**
+ * Phase is completed (all sub-issues closed)
  */
 "completed" | 
 /**

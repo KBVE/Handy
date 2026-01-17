@@ -297,6 +297,7 @@ pub fn container_name_for_issue(issue_number: u64) -> String {
 /// - GitHub and Anthropic credentials passed as env vars
 /// - Resource limits applied
 /// - The agent command started with auto-accept flags
+/// - A non-root user (required for Claude Code's --dangerously-skip-permissions)
 pub fn spawn_sandbox(config: &SandboxConfig) -> Result<SandboxResult, String> {
     // Parse issue number from issue_ref
     let issue_number = config
@@ -307,6 +308,21 @@ pub fn spawn_sandbox(config: &SandboxConfig) -> Result<SandboxResult, String> {
         .ok_or("Invalid issue reference format")?;
 
     let container_name = container_name_for_issue(issue_number);
+
+    // Pre-check: Remove any existing container with this name to avoid conflicts
+    // This handles orphaned containers that weren't cleaned up properly
+    if let Some(existing) = container_exists_for_issue(issue_number as u32) {
+        log::warn!(
+            "Found existing container {} for issue #{}, removing before spawn",
+            existing,
+            issue_number
+        );
+        if let Err(e) = stop_and_remove_container(&existing) {
+            log::warn!("Failed to remove existing container: {}", e);
+            // Continue anyway - docker run will fail if container exists
+        }
+    }
+
     let image = config
         .image
         .clone()
@@ -325,27 +341,18 @@ pub fn spawn_sandbox(config: &SandboxConfig) -> Result<SandboxResult, String> {
         "/workspace".to_string(),
     ];
 
-    // Mount auth configs for Claude Code and GitHub CLI (read-only)
+    // Mount the persistent Claude auth volume
+    // This volume contains credentials from the one-time auth setup container
+    // The volume is mounted directly to the user's .claude directory
+    args.push("-v".to_string());
+    args.push(format!("{}:/tmp/claude-auth:ro", CLAUDE_AUTH_VOLUME));
+
+    // Mount GitHub CLI auth from host (if available) - gh tokens work fine from host
     if let Ok(home) = std::env::var("HOME") {
-        // Claude Code auth: ~/.claude.json (OAuth config)
-        let claude_json = format!("{}/.claude.json", home);
-        if std::path::Path::new(&claude_json).exists() {
-            args.push("-v".to_string());
-            args.push(format!("{}:/root/.claude.json:ro", claude_json));
-        }
-
-        // Claude Code data directory: ~/.claude/ (session data, etc.)
-        let claude_dir = format!("{}/.claude", home);
-        if std::path::Path::new(&claude_dir).exists() {
-            args.push("-v".to_string());
-            args.push(format!("{}:/root/.claude:ro", claude_dir));
-        }
-
-        // GitHub CLI auth: ~/.config/gh/ (hosts.yml with tokens)
         let gh_dir = format!("{}/.config/gh", home);
         if std::path::Path::new(&gh_dir).exists() {
             args.push("-v".to_string());
-            args.push(format!("{}:/root/.config/gh:ro", gh_dir));
+            args.push(format!("{}:/tmp/host-auth/.config/gh:ro", gh_dir));
         }
     }
 
@@ -392,13 +399,15 @@ pub fn spawn_sandbox(config: &SandboxConfig) -> Result<SandboxResult, String> {
     // Add the image
     args.push(image);
 
-    // Build the agent command based on type
+    // Build the agent command based on type, wrapped in a setup script
+    // that creates a non-root user (required for --dangerously-skip-permissions)
     let agent_cmd = build_sandboxed_agent_command(&config.agent_type, &config.issue_ref, config.auto_accept)?;
+    let setup_script = build_nonroot_setup_script(&agent_cmd);
 
     // Add command as shell execution
     args.push("sh".to_string());
     args.push("-c".to_string());
-    args.push(agent_cmd);
+    args.push(setup_script);
 
     // Log the docker command (sanitized - hide sensitive env vars)
     let safe_args: Vec<String> = args.iter().map(|arg| {
@@ -430,6 +439,123 @@ pub fn spawn_sandbox(config: &SandboxConfig) -> Result<SandboxResult, String> {
     })
 }
 
+/// Build a setup script that creates a non-root user and runs the agent command
+///
+/// This is required because Claude Code's --dangerously-skip-permissions flag
+/// refuses to run with root/sudo privileges for security reasons.
+///
+/// The script always creates a non-root 'agent' user (or reuses 'node' if it exists
+/// in node-based images). On macOS with Docker Desktop/OrbStack, mounted volumes
+/// may appear as root-owned, so we can't rely on workspace UID detection.
+///
+/// IMPORTANT: We use `exec gosu` to completely replace the shell process with
+/// the non-root user's process. This ensures Claude Code sees a clean non-root
+/// environment without any sudo/su context in the process tree.
+///
+/// Authentication is loaded from:
+/// - /tmp/claude-auth - Persistent Docker volume with Claude Code credentials
+/// - /tmp/host-auth/.config/gh - GitHub CLI auth from host
+fn build_nonroot_setup_script(agent_cmd: &str) -> String {
+    format!(
+        r#"
+set -e
+
+# Always use a non-root user for Claude Code
+# On macOS with Docker Desktop/OrbStack, mounted volumes may appear as root-owned,
+# so we can't rely on workspace UID detection.
+
+# Check if 'node' user exists (common in node:* images) and use it
+# Otherwise create an 'agent' user
+if id "node" &>/dev/null; then
+    AGENT_USER="node"
+    AGENT_HOME=$(getent passwd "node" | cut -d: -f6)
+    echo "Using existing 'node' user"
+else
+    AGENT_USER="agent"
+    AGENT_HOME="/home/agent"
+
+    # Create agent group and user (ignore errors if they exist)
+    groupadd agent 2>/dev/null || true
+    useradd -m -s /bin/bash -g agent agent 2>/dev/null || true
+
+    echo "Created 'agent' user"
+fi
+
+# Ensure home directory structure exists
+mkdir -p "$AGENT_HOME/.config"
+mkdir -p "$AGENT_HOME/.claude"
+
+# Copy Claude Code auth from persistent volume (set up via one-time auth container)
+if [ -d /tmp/claude-auth ] && [ "$(ls -A /tmp/claude-auth 2>/dev/null)" ]; then
+    echo "Copying Claude Code credentials from auth volume..."
+    cp -r /tmp/claude-auth/* "$AGENT_HOME/.claude/" 2>/dev/null || true
+else
+    echo "WARNING: No Claude auth found in volume. Run 'Setup Auth' in Handy DevOps settings."
+fi
+
+# Copy GitHub CLI auth from host (if mounted)
+if [ -d /tmp/host-auth/.config/gh ]; then
+    mkdir -p "$AGENT_HOME/.config/gh"
+    cp -r /tmp/host-auth/.config/gh/* "$AGENT_HOME/.config/gh/" 2>/dev/null || true
+    echo "Copied GitHub CLI auth from host"
+fi
+
+# Fix ownership of home directory
+chown -R "$AGENT_USER:$AGENT_USER" "$AGENT_HOME" 2>/dev/null || true
+
+# Give the user ownership of the workspace
+# This is safe because we're in an isolated container
+chown -R "$AGENT_USER:$AGENT_USER" /workspace 2>/dev/null || true
+
+# Install gh CLI, gosu, and expect (for automating the interactive prompt)
+apt-get update && apt-get install -y gh gosu expect > /dev/null 2>&1 || true
+
+# Install Claude Code globally (as root, so it's available to all users)
+npm install -g @anthropic-ai/claude-code
+
+# Create expect script file to automate the bypass permissions warning dialog
+# Use a here-doc with Tcl's format command to create the escape character
+cat > /tmp/auto-accept.exp << 'EXPECT_SCRIPT'
+#!/usr/bin/expect -f
+set timeout -1
+set cmd [lindex $argv 0]
+
+# Define the escape sequence for down arrow using Tcl format (char 27 = ESC)
+set DOWN_ARROW [format "%c\[B" 27]
+
+spawn -noecho {{*}}$cmd
+expect {{
+    "No, exit" {{
+        send $DOWN_ARROW
+        sleep 0.2
+        send "\r"
+        exp_continue
+    }}
+    eof
+}}
+wait
+EXPECT_SCRIPT
+chmod +x /tmp/auto-accept.exp
+
+# Create wrapper script that runs Claude via expect
+# Use unquoted heredoc so CLAUDE_CMD variable expands
+CLAUDE_CMD='{agent_cmd}'
+cat > /tmp/run-agent.sh << AGENT_SCRIPT
+#!/bin/bash
+cd /workspace
+exec /tmp/auto-accept.exp "$CLAUDE_CMD"
+AGENT_SCRIPT
+chmod +x /tmp/run-agent.sh
+chown "$AGENT_USER:$AGENT_USER" /tmp/run-agent.sh /tmp/auto-accept.exp
+
+# Use gosu to exec as the user - this replaces the current process entirely
+# Unlike su/sudo, gosu doesn't leave any privileged process in the chain
+exec gosu "$AGENT_USER" /tmp/run-agent.sh
+"#,
+        agent_cmd = agent_cmd.replace('\'', "'\\''"),
+    )
+}
+
 /// Build the command to run inside the sandbox container
 fn build_sandboxed_agent_command(
     agent_type: &str,
@@ -442,6 +568,7 @@ fn build_sandboxed_agent_command(
         "claude" => {
             if auto_accept {
                 // In sandbox, we can safely use --dangerously-skip-permissions
+                // This works because we run as a non-root user
                 format!(
                     "claude --dangerously-skip-permissions 'Work on GitHub issue {}#{}: Implement the requirements described in the issue. When done, commit your changes and create a PR.'",
                     repo, issue_number
@@ -625,6 +752,205 @@ pub fn list_sandboxes() -> Result<Vec<SandboxStatus>, String> {
     Ok(sandboxes)
 }
 
+/// Information about a cleaned up orphan container
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct CleanedOrphanInfo {
+    /// Container name
+    pub container_name: String,
+    /// Issue number associated with this container (if parseable)
+    pub issue_number: Option<u32>,
+}
+
+/// Result of cleaning up orphaned containers
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct OrphanCleanupResult {
+    /// Number of orphaned containers found
+    pub found: usize,
+    /// Number of containers successfully removed
+    pub removed: usize,
+    /// Container names that were removed
+    pub removed_containers: Vec<String>,
+    /// Detailed info about cleaned containers (includes issue numbers for toasts)
+    pub cleaned_orphans: Vec<CleanedOrphanInfo>,
+    /// Any errors encountered
+    pub errors: Vec<String>,
+}
+
+/// Check if a Docker container exists for a given issue number
+///
+/// Checks for both `handy-sandbox-{issue}` and `handy-support-sandbox-{issue}` patterns.
+/// Returns the container name if it exists, None otherwise.
+pub fn container_exists_for_issue(issue_number: u32) -> Option<String> {
+    let patterns = [
+        format!("handy-sandbox-{}", issue_number),
+        format!("handy-support-sandbox-{}", issue_number),
+    ];
+
+    for container_name in &patterns {
+        let output = Command::new("docker")
+            .args(["inspect", "--format", "{{.State.Running}}", container_name])
+            .output();
+
+        if let Ok(output) = output {
+            if output.status.success() {
+                // Container exists
+                return Some(container_name.clone());
+            }
+        }
+    }
+
+    None
+}
+
+/// Stop and remove a container by name
+///
+/// Returns Ok(()) if the container was removed or didn't exist.
+/// Returns Err if the removal failed.
+pub fn stop_and_remove_container(container_name: &str) -> Result<(), String> {
+    let output = Command::new("docker")
+        .args(["rm", "-f", container_name])
+        .output()
+        .map_err(|e| format!("Failed to run docker rm: {}", e))?;
+
+    if output.status.success() {
+        log::info!("Removed container: {}", container_name);
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // "No such container" is fine - it's already gone
+        if stderr.contains("No such container") {
+            Ok(())
+        } else {
+            Err(format!("Failed to remove container {}: {}", container_name, sanitize_docker_error(&stderr)))
+        }
+    }
+}
+
+/// Find and remove orphaned Handy Docker containers
+///
+/// An orphaned container is one that:
+/// - Has a name matching `handy-sandbox-*` or `handy-support-sandbox-*`
+/// - Does not have a corresponding active tmux session
+///
+/// This helps clean up containers that were left behind when:
+/// - The app crashed
+/// - A tmux session was killed externally
+/// - Docker containers outlived their sessions
+pub fn cleanup_orphaned_containers() -> Result<OrphanCleanupResult, String> {
+    use super::tmux;
+
+    // Get all Handy-related containers (both sandbox and support-sandbox)
+    let output = Command::new("docker")
+        .args([
+            "ps",
+            "-a",
+            "--filter", "name=handy-sandbox-",
+            "--filter", "name=handy-support-sandbox-",
+            "--format", "{{.Names}}",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to list containers: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // If docker is not running, that's fine - no orphans to clean
+        if stderr.contains("Cannot connect to the Docker daemon") {
+            return Ok(OrphanCleanupResult {
+                found: 0,
+                removed: 0,
+                removed_containers: vec![],
+                cleaned_orphans: vec![],
+                errors: vec![],
+            });
+        }
+        return Err(format!("Docker failed: {}", stderr));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let container_names: Vec<&str> = stdout.lines().filter(|s| !s.is_empty()).collect();
+
+    if container_names.is_empty() {
+        return Ok(OrphanCleanupResult {
+            found: 0,
+            removed: 0,
+            removed_containers: vec![],
+            cleaned_orphans: vec![],
+            errors: vec![],
+        });
+    }
+
+    // Get active tmux sessions to compare against
+    let active_sessions = tmux::list_sessions().unwrap_or_default();
+
+    // Build a set of issue numbers that have active sessions
+    let active_issue_numbers: std::collections::HashSet<u32> = active_sessions
+        .iter()
+        .filter_map(|s| {
+            s.metadata.as_ref().and_then(|m| {
+                m.issue_ref.as_ref().and_then(|ref_str| {
+                    ref_str.split('#').last().and_then(|n| n.parse().ok())
+                })
+            })
+        })
+        .collect();
+
+    let mut result = OrphanCleanupResult {
+        found: 0,
+        removed: 0,
+        removed_containers: vec![],
+        cleaned_orphans: vec![],
+        errors: vec![],
+    };
+
+    for container_name in container_names {
+        // Extract issue number from container name
+        // Patterns: handy-sandbox-123, handy-support-sandbox-123
+        let issue_num: Option<u32> = container_name
+            .trim_start_matches("handy-support-sandbox-")
+            .trim_start_matches("handy-sandbox-")
+            .parse()
+            .ok();
+
+        let is_orphan = match issue_num {
+            Some(num) => !active_issue_numbers.contains(&num),
+            None => true, // Can't parse issue number, consider it orphaned
+        };
+
+        if is_orphan {
+            result.found += 1;
+            log::info!("Found orphaned container: {}", container_name);
+
+            // Try to remove the container
+            match Command::new("docker")
+                .args(["rm", "-f", container_name])
+                .output()
+            {
+                Ok(rm_output) => {
+                    if rm_output.status.success() {
+                        result.removed += 1;
+                        result.removed_containers.push(container_name.to_string());
+                        result.cleaned_orphans.push(CleanedOrphanInfo {
+                            container_name: container_name.to_string(),
+                            issue_number: issue_num,
+                        });
+                        log::info!("Removed orphaned container: {}", container_name);
+                    } else {
+                        let err = String::from_utf8_lossy(&rm_output.stderr).to_string();
+                        result.errors.push(format!("{}: {}", container_name, err));
+                        log::warn!("Failed to remove container {}: {}", container_name, err);
+                    }
+                }
+                Err(e) => {
+                    result.errors.push(format!("{}: {}", container_name, e));
+                    log::warn!("Failed to remove container {}: {}", container_name, e);
+                }
+            }
+        }
+    }
+
+    Ok(result)
+}
+
 /// Configuration for a devcontainer.json file
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct DevContainerConfig {
@@ -800,6 +1126,240 @@ pub fn exec_in_devcontainer(worktree_path: &str, command: &str) -> Result<String
     }
 
     Ok(format!("{}{}", stdout, stderr))
+}
+
+/// Volume name for persistent Claude Code authentication
+const CLAUDE_AUTH_VOLUME: &str = "handy-claude-auth";
+
+/// Status of the Claude Code authentication volume
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct ClaudeAuthVolumeStatus {
+    /// Whether the volume exists
+    pub exists: bool,
+    /// Whether the volume has authentication data
+    pub has_auth: bool,
+    /// Volume name
+    pub volume_name: String,
+    /// Last authentication time (if known)
+    pub last_auth: Option<String>,
+}
+
+/// Check if the Claude Code authentication volume exists and has credentials
+pub fn check_claude_auth_volume() -> Result<ClaudeAuthVolumeStatus, String> {
+    // Check if volume exists
+    let output = Command::new("docker")
+        .args(["volume", "inspect", CLAUDE_AUTH_VOLUME])
+        .output()
+        .map_err(|e| format!("Failed to inspect volume: {}", e))?;
+
+    let exists = output.status.success();
+
+    if !exists {
+        return Ok(ClaudeAuthVolumeStatus {
+            exists: false,
+            has_auth: false,
+            volume_name: CLAUDE_AUTH_VOLUME.to_string(),
+            last_auth: None,
+        });
+    }
+
+    // Check if volume has auth data by running a quick container to check for .claude.json
+    let check_output = Command::new("docker")
+        .args([
+            "run", "--rm",
+            "-v", &format!("{}:/claude-auth:ro", CLAUDE_AUTH_VOLUME),
+            "alpine:latest",
+            "sh", "-c",
+            "test -f /claude-auth/.claude.json && cat /claude-auth/.claude.json | head -1 || echo 'NO_AUTH'"
+        ])
+        .output()
+        .map_err(|e| format!("Failed to check auth data: {}", e))?;
+
+    let check_result = String::from_utf8_lossy(&check_output.stdout).trim().to_string();
+    let has_auth = check_output.status.success() && !check_result.contains("NO_AUTH") && check_result.starts_with('{');
+
+    // Try to get last modified time of auth file
+    let last_auth = if has_auth {
+        let stat_output = Command::new("docker")
+            .args([
+                "run", "--rm",
+                "-v", &format!("{}:/claude-auth:ro", CLAUDE_AUTH_VOLUME),
+                "alpine:latest",
+                "stat", "-c", "%y", "/claude-auth/.claude.json"
+            ])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+        stat_output
+    } else {
+        None
+    };
+
+    Ok(ClaudeAuthVolumeStatus {
+        exists,
+        has_auth,
+        volume_name: CLAUDE_AUTH_VOLUME.to_string(),
+        last_auth,
+    })
+}
+
+/// Create the Claude Code authentication volume if it doesn't exist
+pub fn ensure_claude_auth_volume() -> Result<(), String> {
+    let output = Command::new("docker")
+        .args(["volume", "create", CLAUDE_AUTH_VOLUME])
+        .output()
+        .map_err(|e| format!("Failed to create volume: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // Ignore "already exists" error
+        if !stderr.contains("already exists") {
+            return Err(format!("Failed to create volume: {}", stderr));
+        }
+    }
+
+    log::info!("Ensured Claude auth volume exists: {}", CLAUDE_AUTH_VOLUME);
+    Ok(())
+}
+
+/// Launch an interactive container for Claude Code authentication
+///
+/// This starts a one-time container that:
+/// 1. Mounts the persistent auth volume
+/// 2. Installs Claude Code
+/// 3. Opens a shell where the user can run `claude /login`
+/// 4. Saves credentials to the volume for future use
+///
+/// Returns the container name so the caller can track it.
+pub fn launch_claude_auth_container() -> Result<String, String> {
+    // Ensure the auth volume exists
+    ensure_claude_auth_volume()?;
+
+    let container_name = "handy-claude-auth-setup";
+
+    // Remove any existing auth container
+    let _ = Command::new("docker")
+        .args(["rm", "-f", container_name])
+        .output();
+
+    // Launch interactive container with the auth volume mounted
+    // We use node:20-bookworm as it has npm for installing claude-code
+    let output = Command::new("docker")
+        .args([
+            "run", "-it", "--rm",
+            "--name", container_name,
+            "-v", &format!("{}:/home/node/.claude", CLAUDE_AUTH_VOLUME),
+            "-e", "HOME=/home/node",
+            "-w", "/home/node",
+            "node:20-bookworm",
+            "bash", "-c",
+            r#"
+echo "=================================================="
+echo "   Claude Code Authentication Setup"
+echo "=================================================="
+echo ""
+echo "Installing Claude Code..."
+npm install -g @anthropic-ai/claude-code > /dev/null 2>&1
+echo "✅ Claude Code installed"
+echo ""
+echo "Now run: claude /login"
+echo ""
+echo "After authenticating, your credentials will be saved"
+echo "for all future Handy sandbox containers."
+echo ""
+echo "Type 'exit' when done."
+echo "=================================================="
+exec bash
+"#
+        ])
+        .spawn()
+        .map_err(|e| format!("Failed to launch auth container: {}", e))?;
+
+    // Note: spawn() returns immediately, the container runs in foreground
+    // The calling code should handle this appropriately (e.g., open in terminal)
+
+    Ok(container_name.to_string())
+}
+
+/// Launch Claude auth container in a tmux session
+///
+/// This creates a tmux session that runs the Docker auth container,
+/// then opens Terminal.app and attaches to it (same pattern as gh/claude auth).
+pub fn launch_claude_auth_in_terminal() -> Result<String, String> {
+    // Use the same socket name as other Handy tmux sessions
+    const SOCKET_NAME: &str = "handy";
+
+    // Ensure the auth volume exists
+    ensure_claude_auth_volume()?;
+
+    let session_name = "handy-auth-claude-docker";
+    let container_name = "handy-claude-auth-setup";
+
+    // Remove any existing auth container first
+    let _ = Command::new("docker")
+        .args(["rm", "-f", container_name])
+        .output();
+
+    // Kill any existing session with this name
+    let _ = Command::new("tmux")
+        .args(["-L", SOCKET_NAME, "kill-session", "-t", session_name])
+        .output();
+
+    // Build the docker command to run in the tmux session
+    let docker_cmd = format!(
+        r#"docker run -it --rm --name {} -v {}:/home/node/.claude -e HOME=/home/node -w /home/node node:20-bookworm bash -c 'echo "==================================================" && echo "   Claude Code Authentication Setup" && echo "==================================================" && echo "" && echo "Installing Claude Code..." && npm install -g @anthropic-ai/claude-code > /dev/null 2>&1 && echo "✅ Claude Code installed" && echo "" && echo "Now run: claude /login" && echo "" && echo "After authenticating, your credentials will be saved" && echo "for all future Handy sandbox containers." && echo "" && echo "Type exit when done." && echo "==================================================" && exec bash'"#,
+        container_name, CLAUDE_AUTH_VOLUME
+    );
+
+    // Create a tmux session that runs the docker command
+    let result = Command::new("tmux")
+        .args([
+            "-L", SOCKET_NAME,
+            "new-session", "-d",
+            "-s", session_name,
+            "-x", "120",
+            "-y", "30",
+            "bash", "-c", &docker_cmd,
+        ])
+        .output();
+
+    match result {
+        Ok(output) => {
+            if output.status.success() {
+                // Open Terminal.app and attach to the session
+                let _ = Command::new("open")
+                    .args(["-a", "Terminal"])
+                    .spawn();
+
+                // Give Terminal a moment to open, then attach
+                std::thread::sleep(std::time::Duration::from_millis(500));
+
+                // Attach using the same socket
+                let _ = Command::new("osascript")
+                    .args([
+                        "-e",
+                        &format!(
+                            "tell application \"Terminal\" to do script \"tmux -L {} attach-session -t {}\"",
+                            SOCKET_NAME, session_name
+                        ),
+                    ])
+                    .spawn();
+
+                log::info!("Launched Claude auth container in tmux session: {}", session_name);
+                Ok(session_name.to_string())
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                Err(format!("Failed to create tmux session: {}", stderr))
+            }
+        }
+        Err(e) => Err(format!("Failed to run tmux: {}", e)),
+    }
+}
+
+/// Get the volume name for Claude authentication
+pub fn get_claude_auth_volume_name() -> &'static str {
+    CLAUDE_AUTH_VOLUME
 }
 
 #[cfg(test)]

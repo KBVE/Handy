@@ -15,7 +15,7 @@ use crate::devops::{
     DevOpsDependencies,
 };
 use crate::settings;
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 /// Check if required DevOps dependencies (gh, tmux) are installed.
 /// Runs in a blocking task to avoid freezing the UI.
@@ -791,6 +791,46 @@ pub fn set_sandbox_enabled(app: AppHandle, enabled: bool) -> bool {
     app_settings.sandbox_enabled = enabled;
     settings::write_settings(&app, app_settings);
     enabled
+}
+
+/// Clean up orphaned Docker containers from sandbox execution.
+///
+/// Finds and removes containers that match `handy-sandbox-*` or `handy-support-sandbox-*`
+/// but don't have a corresponding active tmux session.
+///
+/// Emits `orphan-container-cleaned` events for each cleaned container (for toast notifications).
+#[tauri::command]
+#[specta::specta]
+pub fn cleanup_orphaned_containers(
+    app: AppHandle,
+) -> Result<crate::devops::docker::OrphanCleanupResult, String> {
+    let result = crate::devops::docker::cleanup_orphaned_containers()?;
+
+    // Emit events for each cleaned orphan so UI can show toast notifications
+    for orphan in &result.cleaned_orphans {
+        let _ = app.emit("orphan-container-cleaned", orphan.clone());
+    }
+
+    Ok(result)
+}
+
+/// Check the status of the Claude Code authentication volume.
+///
+/// Returns information about whether the volume exists and has credentials.
+#[tauri::command]
+#[specta::specta]
+pub fn check_claude_auth_volume() -> Result<crate::devops::docker::ClaudeAuthVolumeStatus, String> {
+    crate::devops::docker::check_claude_auth_volume()
+}
+
+/// Launch an interactive container for Claude Code authentication.
+///
+/// Opens a new Terminal window with a container where the user can run `claude /login`.
+/// Credentials are saved to a persistent Docker volume for future sandbox use.
+#[tauri::command]
+#[specta::specta]
+pub fn launch_claude_auth_setup() -> Result<String, String> {
+    crate::devops::docker::launch_claude_auth_in_terminal()
 }
 
 // ===== Epic Workflow Operations =====

@@ -477,6 +477,408 @@ fn push_branch(worktree_path: &str, branch_name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Configuration for spawning a support worker agent for a specific task
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct SupportWorkerConfig {
+    /// Repository in org/repo format
+    pub repo: String,
+    /// Issue number the work relates to (for tracking)
+    pub issue_number: u32,
+    /// PR number to work on (for merge tasks)
+    pub pr_number: Option<u64>,
+    /// The task description for the agent
+    pub task: String,
+    /// Task type (merge, review, etc.)
+    pub task_type: String,
+    /// Merge method if this is a merge task
+    pub merge_method: Option<String>,
+    /// Whether to delete the branch after merging
+    pub delete_branch: bool,
+    /// Whether to run in a sandboxed Docker container
+    pub sandboxed: bool,
+    /// Worktree path (required for sandboxed execution to resolve merge conflicts)
+    pub worktree_path: Option<String>,
+}
+
+/// Result of spawning a support worker
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct SupportWorkerResult {
+    /// tmux session name
+    pub session: String,
+    /// Issue number
+    pub issue_number: u32,
+    /// PR number if applicable
+    pub pr_number: Option<u64>,
+    /// Task type
+    pub task_type: String,
+    /// Status of the spawn
+    pub status: String,
+}
+
+/// Spawn a support worker agent to handle a specific task
+///
+/// Support workers are lightweight agents that handle specific tasks like:
+/// - Merging PRs after review
+/// - Running CI checks
+/// - Updating issue labels
+///
+/// When `sandboxed` is true and a `worktree_path` is provided, the support worker
+/// runs inside a Docker container with the worktree mounted, allowing it to
+/// resolve merge conflicts locally.
+pub async fn spawn_support_worker(
+    config: SupportWorkerConfig,
+) -> Result<SupportWorkerResult, String> {
+    let session_name = format!(
+        "handy-support-{}-{}",
+        config.task_type,
+        config.issue_number
+    );
+
+    // Get machine ID
+    let machine_id = get_machine_id()?;
+
+    // Build metadata for the support worker session
+    let metadata = tmux::AgentMetadata {
+        session: session_name.clone(),
+        issue_ref: Some(format!("{}#{}", config.repo, config.issue_number)),
+        repo: Some(config.repo.clone()),
+        worktree: config.worktree_path.clone(),
+        agent_type: format!("support-{}", config.task_type),
+        machine_id: machine_id.clone(),
+        started_at: chrono::Utc::now().to_rfc3339(),
+    };
+
+    // Determine working directory:
+    // - If sandboxed with worktree, use worktree path (will be mounted in container)
+    // - Otherwise, use home directory
+    let working_dir = if config.sandboxed {
+        config.worktree_path.clone().ok_or_else(|| {
+            "Worktree path required for sandboxed support worker execution".to_string()
+        })?
+    } else {
+        std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string())
+    };
+
+    // Create tmux session
+    tokio::task::spawn_blocking({
+        let session_name = session_name.clone();
+        let metadata = metadata.clone();
+        let working_dir = working_dir.clone();
+        move || tmux::create_session(&session_name, Some(&working_dir), &metadata)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+    .map_err(|e| format!("Failed to create tmux session: {}", e))?;
+
+    // Build the inner command based on task type
+    // Pass sandboxed flag so we can add --dangerously-skip-permissions in sandbox
+    let inner_command = build_support_worker_command(&config, config.sandboxed)?;
+
+    // If sandboxed, wrap the command in a Docker container
+    let command = if config.sandboxed {
+        let worktree_path = config.worktree_path.as_ref().ok_or_else(|| {
+            "Worktree path required for sandboxed support worker execution".to_string()
+        })?;
+
+        build_sandboxed_support_worker_command(
+            &inner_command,
+            worktree_path,
+            &config.repo,
+            config.issue_number,
+        )?
+    } else {
+        inner_command
+    };
+
+    // Send the command to the tmux session
+    tokio::task::spawn_blocking({
+        let session_name = session_name.clone();
+        move || tmux::send_command(&session_name, &command)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+    .map_err(|e| format!("Failed to start support worker: {}", e))?;
+
+    // Post comment to issue about support worker activity
+    let sandbox_note = if config.sandboxed { " (sandboxed)" } else { "" };
+    let comment = format!(
+        "🔧 **Support Worker Spawned**{}\n\n\
+        - **Task**: {}\n\
+        - **Session**: `{}`\n\
+        - **PR**: #{}\n\
+        - **Machine**: {}\n\n\
+        Support worker is handling this task.",
+        sandbox_note,
+        config.task_type,
+        session_name,
+        config.pr_number.unwrap_or(0),
+        machine_id
+    );
+    github::add_issue_comment_async(&config.repo, config.issue_number, &comment)
+        .await
+        .ok(); // Non-critical
+
+    Ok(SupportWorkerResult {
+        session: session_name,
+        issue_number: config.issue_number,
+        pr_number: config.pr_number,
+        task_type: config.task_type,
+        status: "spawned".to_string(),
+    })
+}
+
+/// Build the inner command for a support worker based on task type
+///
+/// When `sandboxed` is true, adds `--dangerously-skip-permissions` flag since
+/// the Docker container provides isolation and we want fully autonomous execution.
+fn build_support_worker_command(config: &SupportWorkerConfig, sandboxed: bool) -> Result<String, String> {
+    // In sandbox mode, use --dangerously-skip-permissions for autonomous execution
+    let auto_flag = if sandboxed {
+        " --dangerously-skip-permissions"
+    } else {
+        ""
+    };
+
+    match config.task_type.as_str() {
+        "merge" => {
+            // Build gh pr merge command with Claude for conflict resolution
+            let merge_method = config.merge_method.as_deref().unwrap_or("squash");
+            let pr_number = config.pr_number.ok_or("PR number required for merge task")?;
+            let delete_flag = if config.delete_branch {
+                " --delete-branch"
+            } else {
+                ""
+            };
+
+            // Use Claude to handle the merge, including conflict resolution if needed
+            Ok(format!(
+                r#"claude{auto_flag} "You are a Support Worker agent tasked with merging PR #{pr_number} in {repo}.
+
+Your task:
+1. First, view the PR details: gh pr view {pr_number} --repo {repo}
+2. Check PR status and CI: gh pr checks {pr_number} --repo {repo}
+3. Attempt to merge the PR: gh pr merge {pr_number} --repo {repo} --{merge_method}{delete_flag}
+
+If the merge fails due to merge conflicts:
+1. Checkout the PR branch locally
+2. Pull the latest main branch
+3. Merge main into the PR branch
+4. Resolve any conflicts by examining the code and making intelligent decisions
+5. Commit the resolved conflicts
+6. Push the updated branch
+7. Retry the merge
+
+If CI checks are failing, analyze the failures and determine if they are blocking. Report back with what you find.
+
+Start by viewing the PR and attempting the merge.""#,
+                auto_flag = auto_flag,
+                pr_number = pr_number,
+                repo = config.repo,
+                merge_method = merge_method,
+                delete_flag = delete_flag,
+            ))
+        }
+        "review" => {
+            let pr_number = config.pr_number.ok_or("PR number required for review task")?;
+            Ok(format!(
+                r#"claude{} "Review the PR #{} in {} and provide feedback. Check the diff, look for issues, and approve or request changes." --repo {}"#,
+                auto_flag, pr_number, config.repo, config.repo
+            ))
+        }
+        _ => {
+            // Generic task - let Claude handle it
+            Ok(format!(
+                r#"claude{} "{}""#,
+                auto_flag,
+                config.task.replace('"', "\\\"")
+            ))
+        }
+    }
+}
+
+/// Build a Docker command that runs the support worker inside a container
+///
+/// This wraps the support worker command in a Docker container with:
+/// - The worktree mounted at /workspace
+/// - GitHub and Anthropic credentials passed from host auth configs
+/// - Resource limits applied
+/// - A non-root user (required for --dangerously-skip-permissions)
+fn build_sandboxed_support_worker_command(
+    inner_command: &str,
+    worktree_path: &str,
+    repo: &str,
+    issue_number: u32,
+) -> Result<String, String> {
+    use crate::devops::docker::{container_exists_for_issue, stop_and_remove_container};
+
+    let container_name = format!("handy-support-sandbox-{}", issue_number);
+    let image = "node:20-bookworm"; // Base image with Node.js for Claude Code
+
+    // Pre-check: Remove any existing container with this issue number to avoid conflicts
+    // This handles both regular sandbox and support-sandbox containers
+    if let Some(existing) = container_exists_for_issue(issue_number) {
+        log::warn!(
+            "Found existing container {} for issue #{}, removing before spawning support worker",
+            existing,
+            issue_number
+        );
+        if let Err(e) = stop_and_remove_container(&existing) {
+            log::warn!("Failed to remove existing container: {}", e);
+            // Continue anyway - docker run will fail if container exists
+        }
+    }
+
+    let mut docker_args = vec![
+        "docker run --rm -it".to_string(),
+        format!("--name {}", container_name),
+        format!("-v {}:/workspace", worktree_path),
+        "-w /workspace".to_string(),
+    ];
+
+    // Mount the persistent Claude auth volume
+    // This volume contains credentials from the one-time auth setup container
+    docker_args.push(format!("-v {}:/tmp/claude-auth:ro", crate::devops::docker::get_claude_auth_volume_name()));
+
+    // Mount GitHub CLI auth from host (if available) - gh tokens work fine from host
+    if let Ok(home) = std::env::var("HOME") {
+        let gh_dir = format!("{}/.config/gh", home);
+        if std::path::Path::new(&gh_dir).exists() {
+            docker_args.push(format!("-v {}:/tmp/host-auth/.config/gh:ro", gh_dir));
+        }
+    }
+
+    // Pass through credentials from host environment (fallback)
+    docker_args.push("-e GH_TOKEN".to_string());
+    docker_args.push("-e GITHUB_TOKEN".to_string());
+
+    // Add context env vars
+    docker_args.push(format!("-e HANDY_ISSUE_REF={}#{}", repo, issue_number));
+    docker_args.push("-e HANDY_AGENT_TYPE=support-worker".to_string());
+    docker_args.push(format!("-e HANDY_CONTAINER_NAME={}", container_name));
+
+    // Add image
+    docker_args.push(image.to_string());
+    docker_args.push("sh -c".to_string());
+
+    // Build the setup script that:
+    // 1. Uses the 'node' user if it exists (common in node:* images), otherwise creates 'agent' user
+    // 2. Copies auth from persistent volume to the user's home
+    // 3. Installs Claude Code globally
+    // 4. Uses gosu to exec as the non-root user (completely replacing the process)
+    //
+    // We need to run as non-root because Claude Code's --dangerously-skip-permissions
+    // flag refuses to run with root/sudo privileges for security reasons.
+    //
+    // NOTE: On macOS with Docker Desktop/OrbStack, mounted volumes may appear as root-owned,
+    // so we can't rely on workspace UID detection. We always use a non-root user.
+    //
+    // IMPORTANT: We use `exec gosu` to completely replace the shell process with
+    // the non-root user's process. This ensures Claude Code sees a clean non-root
+    // environment without any sudo/su context in the process tree.
+    let setup_script = format!(
+        r#"
+set -e
+
+# Always use a non-root user for Claude Code
+# On macOS with Docker Desktop/OrbStack, mounted volumes may appear as root-owned,
+# so we can't rely on workspace UID detection.
+
+# Check if 'node' user exists (common in node:* images) and use it
+# Otherwise create an 'agent' user
+if id "node" &>/dev/null; then
+    AGENT_USER="node"
+    AGENT_HOME=$(getent passwd "node" | cut -d: -f6)
+    echo "Using existing 'node' user"
+else
+    AGENT_USER="agent"
+    AGENT_HOME="/home/agent"
+
+    # Create agent group and user (ignore errors if they exist)
+    groupadd agent 2>/dev/null || true
+    useradd -m -s /bin/bash -g agent agent 2>/dev/null || true
+
+    echo "Created 'agent' user"
+fi
+
+# Ensure home directory structure exists
+mkdir -p "$AGENT_HOME/.config"
+mkdir -p "$AGENT_HOME/.claude"
+
+# Copy Claude Code auth from persistent volume (set up via one-time auth container)
+if [ -d /tmp/claude-auth ] && [ "$(ls -A /tmp/claude-auth 2>/dev/null)" ]; then
+    echo "Copying Claude Code credentials from auth volume..."
+    cp -r /tmp/claude-auth/* "$AGENT_HOME/.claude/" 2>/dev/null || true
+else
+    echo "WARNING: No Claude auth found in volume. Run 'Setup Auth' in Handy DevOps settings."
+fi
+
+# Copy GitHub CLI auth from host (if mounted)
+if [ -d /tmp/host-auth/.config/gh ]; then
+    mkdir -p "$AGENT_HOME/.config/gh"
+    cp -r /tmp/host-auth/.config/gh/* "$AGENT_HOME/.config/gh/" 2>/dev/null || true
+    echo "Copied GitHub CLI auth from host"
+fi
+
+# Fix ownership of home directory
+chown -R "$AGENT_USER:$AGENT_USER" "$AGENT_HOME" 2>/dev/null || true
+
+# Give the user ownership of the workspace
+# This is safe because we're in an isolated container
+chown -R "$AGENT_USER:$AGENT_USER" /workspace 2>/dev/null || true
+
+# Install gh CLI, gosu, and expect (for automating the interactive prompt)
+apt-get update && apt-get install -y gh gosu expect > /dev/null 2>&1 || true
+
+# Install Claude Code globally (as root, so it's available to all users)
+npm install -g @anthropic-ai/claude-code
+
+# Create expect script file to automate the bypass permissions warning dialog
+# Use a here-doc with Tcl's format command to create the escape character
+cat > /tmp/auto-accept.exp << 'EXPECT_SCRIPT'
+#!/usr/bin/expect -f
+set timeout -1
+set cmd [lindex $argv 0]
+
+# Define the escape sequence for down arrow using Tcl format (char 27 = ESC)
+set DOWN_ARROW [format "%c\[B" 27]
+
+spawn -noecho {{*}}$cmd
+expect {{
+    "No, exit" {{
+        send $DOWN_ARROW
+        sleep 0.2
+        send "\r"
+        exp_continue
+    }}
+    eof
+}}
+wait
+EXPECT_SCRIPT
+chmod +x /tmp/auto-accept.exp
+
+# Create wrapper script that runs Claude via expect
+# Use unquoted heredoc so CLAUDE_CMD variable expands
+CLAUDE_CMD='{inner_command}'
+cat > /tmp/run-agent.sh << AGENT_SCRIPT
+#!/bin/bash
+cd /workspace
+exec /tmp/auto-accept.exp "$CLAUDE_CMD"
+AGENT_SCRIPT
+chmod +x /tmp/run-agent.sh
+chown "$AGENT_USER:$AGENT_USER" /tmp/run-agent.sh /tmp/auto-accept.exp
+
+# Use gosu to exec as the user - this replaces the current process entirely
+# Unlike su/sudo, gosu doesn't leave any privileged process in the chain
+exec gosu "$AGENT_USER" /tmp/run-agent.sh
+"#,
+        inner_command = inner_command.replace('\'', "'\\''"),
+    );
+
+    docker_args.push(format!("'{}'", setup_script.replace('\'', "'\\''")));
+
+    Ok(docker_args.join(" "))
+}
+
 // Helper trait for .pipe()
 trait Pipe: Sized {
     fn pipe<F, R>(self, f: F) -> R

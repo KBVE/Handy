@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { commands, DevOpsDependencies } from "@/bindings";
+import { commands, DevOpsDependencies, ClaudeAuthVolumeStatus } from "@/bindings";
 import { SettingsGroup } from "../../ui/SettingsGroup";
 import { DependencyStatus } from "./DependencyStatus";
 import { SessionManager } from "./SessionManager";
@@ -27,6 +27,7 @@ import {
   Server,
   Cpu,
   Container,
+  Key,
 } from "lucide-react";
 
 export const DevOpsSettings: React.FC = () => {
@@ -40,6 +41,43 @@ export const DevOpsSettings: React.FC = () => {
   const [isTogglingAgent, setIsTogglingAgent] = useState<string | null>(null);
   const [sandboxEnabled, setSandboxEnabled] = useState(false);
   const [isTogglingSandbox, setIsTogglingSandbox] = useState(false);
+  const [claudeAuthVolume, setClaudeAuthVolume] = useState<ClaudeAuthVolumeStatus | null>(null);
+  const [isCheckingAuthVolume, setIsCheckingAuthVolume] = useState(false);
+  const [isLaunchingAuthSetup, setIsLaunchingAuthSetup] = useState(false);
+
+  const checkClaudeAuthVolume = async () => {
+    setIsCheckingAuthVolume(true);
+    try {
+      const result = await commands.checkClaudeAuthVolume();
+      if (result.status === "ok") {
+        setClaudeAuthVolume(result.data);
+      }
+    } catch (err) {
+      console.error("Failed to check Claude auth volume:", err);
+    } finally {
+      setIsCheckingAuthVolume(false);
+    }
+  };
+
+  const handleLaunchAuthSetup = async () => {
+    setIsLaunchingAuthSetup(true);
+    try {
+      const result = await commands.launchClaudeAuthSetup();
+      if (result.status === "ok") {
+        // Show a message that Terminal was opened
+        // Check auth status after a delay (user needs time to complete auth)
+        setTimeout(() => {
+          checkClaudeAuthVolume();
+        }, 10000);
+      } else {
+        setError(result.error);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsLaunchingAuthSetup(false);
+    }
+  };
 
   const checkDependencies = async () => {
     setIsLoading(true);
@@ -80,6 +118,7 @@ export const DevOpsSettings: React.FC = () => {
     checkDependencies();
     loadEnabledAgents();
     loadSandboxSetting();
+    checkClaudeAuthVolume();
 
     // Initialize DevOps store for agents and sessions
     initializeDevOpsStore();
@@ -258,6 +297,62 @@ export const DevOpsSettings: React.FC = () => {
                     />
                   </button>
                 </div>
+
+                {/* Claude Code Authentication Volume - shown when sandbox is enabled */}
+                {sandboxEnabled && (
+                  <div className="mt-3 bg-dark-gray/30 rounded px-3 py-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Key className="w-4 h-4 text-mid-gray" />
+                        <div>
+                          <div className="text-xs text-white font-medium">
+                            {t("devops.sandbox.claudeAuthLabel", "Claude Code Auth Volume")}
+                          </div>
+                          <div className="text-[10px] text-gray-400">
+                            {claudeAuthVolume?.has_auth
+                              ? t("devops.sandbox.claudeAuthReady", "Credentials ready for sandbox use")
+                              : t("devops.sandbox.claudeAuthNeeded", "Login required for sandbox agents")}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {isCheckingAuthVolume ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-mid-gray" />
+                        ) : claudeAuthVolume?.has_auth ? (
+                          <CheckCircle2 className="w-4 h-4 text-green-400" />
+                        ) : (
+                          <AlertCircle className="w-4 h-4 text-yellow-400" />
+                        )}
+                        <button
+                          onClick={handleLaunchAuthSetup}
+                          disabled={isLaunchingAuthSetup}
+                          className="text-[10px] px-2 py-1 bg-logo-primary/20 hover:bg-logo-primary/30 text-logo-primary rounded transition-colors disabled:opacity-50"
+                        >
+                          {isLaunchingAuthSetup ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : claudeAuthVolume?.has_auth ? (
+                            t("devops.sandbox.claudeAuthRefresh", "Re-authenticate")
+                          ) : (
+                            t("devops.sandbox.claudeAuthSetup", "Setup Auth")
+                          )}
+                        </button>
+                        <button
+                          onClick={checkClaudeAuthVolume}
+                          disabled={isCheckingAuthVolume}
+                          className="text-[10px] px-2 py-1 bg-mid-gray/20 hover:bg-mid-gray/30 text-mid-gray rounded transition-colors disabled:opacity-50"
+                          title={t("devops.sandbox.claudeAuthCheck", "Check auth status")}
+                        >
+                          <RefreshCcw className={`w-3 h-3 ${isCheckingAuthVolume ? "animate-spin" : ""}`} />
+                        </button>
+                      </div>
+                    </div>
+                    {claudeAuthVolume?.last_auth && (
+                      <div className="text-[9px] text-gray-500 mt-1">
+                        {t("devops.sandbox.claudeAuthLastAuth", "Last authenticated")}: {claudeAuthVolume.last_auth}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ) : dependencies.docker.installed && !dependencies.docker.authenticated && (
               <div className="ml-8 text-xs text-yellow-400/70">

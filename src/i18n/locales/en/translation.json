@@ -926,6 +926,7 @@
       "completed": "Completed",
       "queued": "Queued",
       "autoUpdateGithub": "Auto-update Epic issue on GitHub when sub-issues complete",
+      "autoStartNextPhase": "Auto-merge ready PRs and start next phase",
       "lastCheck": "Last check: {{time}}",
       "activeAgents": "Active Agents",
       "phases": "Phases",

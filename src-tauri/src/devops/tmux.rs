@@ -341,8 +341,32 @@ fn set_session_env(session_name: &str, key: &str, value: &str) -> Result<(), Str
     Ok(())
 }
 
-/// Kill a tmux session
+/// Kill a tmux session and any associated Docker containers
 pub fn kill_session(session_name: &str) -> Result<(), String> {
+    // First, try to get the session metadata to find associated containers
+    // We'll try to kill containers before killing the session
+    if let Ok(metadata) = get_session_metadata(session_name) {
+        // Extract issue number from issue_ref (e.g., "org/repo#123" -> 123)
+        if let Some(issue_ref) = &metadata.issue_ref {
+            if let Some(issue_num) = issue_ref.split('#').last().and_then(|n| n.parse::<u32>().ok()) {
+                // Try to kill sandbox containers (both agent and support worker patterns)
+                let container_patterns = [
+                    format!("handy-sandbox-{}", issue_num),
+                    format!("handy-support-sandbox-{}", issue_num),
+                ];
+
+                for container_name in &container_patterns {
+                    // Force remove the container (ignore errors - container may not exist)
+                    let _ = Command::new("docker")
+                        .args(["rm", "-f", container_name])
+                        .output();
+                    log::debug!("Attempted to remove Docker container: {}", container_name);
+                }
+            }
+        }
+    }
+
+    // Now kill the tmux session
     let output = Command::new("tmux")
         .args(["-L", SOCKET_NAME, "kill-session", "-t", session_name])
         .output()
@@ -492,6 +516,8 @@ pub struct RecoveryResult {
 /// For sessions with `RecoveryAction::Cleanup`, this will kill the session.
 /// Sessions with `RecoveryAction::Resume` are left as-is (already running).
 ///
+/// Also cleans up any orphaned Docker containers (containers without corresponding tmux sessions).
+///
 /// Returns results for each session that was processed.
 pub fn recover_all_sessions(auto_restart: bool, auto_cleanup: bool) -> Result<Vec<RecoveryResult>, String> {
     let sessions = recover_sessions()?;
@@ -570,6 +596,17 @@ pub fn recover_all_sessions(auto_restart: bool, auto_cleanup: bool) -> Result<Ve
         };
 
         results.push(result);
+    }
+
+    // Also clean up orphaned Docker containers
+    // This catches containers that were left behind when tmux sessions were killed externally
+    if let Ok(orphan_result) = super::docker::cleanup_orphaned_containers() {
+        if orphan_result.removed > 0 {
+            log::info!(
+                "Cleaned up {} orphaned Docker containers during session recovery",
+                orphan_result.removed
+            );
+        }
     }
 
     Ok(results)

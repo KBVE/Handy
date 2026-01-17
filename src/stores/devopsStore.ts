@@ -11,6 +11,8 @@ import {
   EpicRecoveryInfo,
 } from "@/bindings";
 
+import { toast } from "@/stores/toastStore";
+
 // Event payload for PR creation
 interface AgentPrCreatedEvent {
   session: string;
@@ -20,12 +22,19 @@ interface AgentPrCreatedEvent {
   repo: string;
 }
 
+// Event payload for orphan container cleanup
+interface OrphanContainerCleanedEvent {
+  container_name: string;
+  issue_number: number | null;
+}
+
 // Epic Monitor state for supervisor functionality
 export interface EpicMonitorState {
   isMonitoring: boolean;
   lastCheck: Date | null;
   completedSinceStart: number;
   autoUpdateGithub: boolean;
+  autoStartNextPhase: boolean;
 }
 
 interface DevOpsStore {
@@ -88,6 +97,7 @@ interface DevOpsStore {
   stopEpicMonitoring: () => void;
   checkEpicCompletions: () => Promise<void>;
   setEpicMonitorAutoUpdate: (enabled: boolean) => void;
+  setEpicMonitorAutoStartNextPhase: (enabled: boolean) => void;
   incrementCompletedCount: (count?: number) => void;
 
   // Internal setters
@@ -104,11 +114,15 @@ interface DevOpsStore {
   _agentRefreshInterval: number | null;
   _sessionRefreshInterval: number | null;
   _epicMonitorInterval: number | null;
+  _orphanCleanupInterval: number | null;
   _prEventUnlisten: UnlistenFn | null;
+  _orphanEventUnlisten: UnlistenFn | null;
   _previousSubIssueStates: Map<number, string>;
+  _mergeWorkersSpawned: Set<number>; // Track issues with merge workers already spawned
   _setAgentRefreshInterval: (id: number | null) => void;
   _setSessionRefreshInterval: (id: number | null) => void;
   _setEpicMonitorInterval: (id: number | null) => void;
+  _setOrphanCleanupInterval: (id: number | null) => void;
 }
 
 export const useDevOpsStore = create<DevOpsStore>()(
@@ -135,6 +149,7 @@ export const useDevOpsStore = create<DevOpsStore>()(
       lastCheck: null,
       completedSinceStart: 0,
       autoUpdateGithub: true,
+      autoStartNextPhase: false, // Default to false for safety
     },
     epicMonitorChecking: false,
 
@@ -149,8 +164,11 @@ export const useDevOpsStore = create<DevOpsStore>()(
     _agentRefreshInterval: null,
     _sessionRefreshInterval: null,
     _epicMonitorInterval: null,
+    _orphanCleanupInterval: null,
     _prEventUnlisten: null,
+    _orphanEventUnlisten: null,
     _previousSubIssueStates: new Map(),
+    _mergeWorkersSpawned: new Set(),
 
     // Internal setters
     setAgents: (agents) => set({ agents }),
@@ -164,6 +182,7 @@ export const useDevOpsStore = create<DevOpsStore>()(
     setAgentFilterMode: (agentFilterMode) => set({ agentFilterMode }),
     _setAgentRefreshInterval: (id) => set({ _agentRefreshInterval: id }),
     _setSessionRefreshInterval: (id) => set({ _sessionRefreshInterval: id }),
+    _setOrphanCleanupInterval: (id) => set({ _orphanCleanupInterval: id }),
     _setEpicMonitorInterval: (id) => set({ _epicMonitorInterval: id }),
 
     // Refresh agents from backend
@@ -556,6 +575,63 @@ export const useDevOpsStore = create<DevOpsStore>()(
         const updatedEpic = get().activeEpic;
         if (!updatedEpic) return;
 
+        // Auto-spawn merge workers for phases that are "Ready"
+        // A phase is "Ready" when all open sub-issues have PRs
+        const { _mergeWorkersSpawned } = get();
+
+        if (epicMonitor.autoStartNextPhase) {
+          const readyPhases = updatedEpic.phases.filter((p) => p.status === "ready");
+
+          for (const phase of readyPhases) {
+            // Find all open sub-issues in this phase that have PRs but no merge worker yet
+            const readySubIssues = updatedEpic.sub_issues.filter(
+              (s) =>
+                s.phase === phase.phase_number &&
+                s.state.toLowerCase() === "open" &&
+                s.pr_url &&
+                s.pr_number &&
+                !s.has_agent_working && // No agent currently working on it
+                !_mergeWorkersSpawned.has(s.issue_number) // Haven't already spawned a worker
+            );
+
+            for (const subIssue of readySubIssues) {
+              console.log(
+                `[Epic Monitor] Auto-spawning merge worker for PR #${subIssue.pr_number} (issue #${subIssue.issue_number})`
+              );
+
+              try {
+                const mergeResult = await commands.mergeReadyPr(
+                  subIssue.issue_number,
+                  "squash", // Default to squash merge
+                  true // Delete branch after merge
+                );
+
+                if (mergeResult.status === "ok" && mergeResult.data.success) {
+                  console.log(
+                    `[Epic Monitor] Merge worker spawned: ${mergeResult.data.support_worker_session}`
+                  );
+                  // Track that we've spawned a worker for this issue
+                  _mergeWorkersSpawned.add(subIssue.issue_number);
+                } else {
+                  console.error(
+                    `[Epic Monitor] Failed to spawn merge worker for #${subIssue.issue_number}:`,
+                    mergeResult.status === "error" ? mergeResult.error : mergeResult.data.error
+                  );
+                }
+              } catch (err) {
+                console.error(`[Epic Monitor] Error spawning merge worker:`, err);
+              }
+            }
+          }
+        }
+
+        // Clean up tracking for closed issues
+        for (const subIssue of updatedEpic.sub_issues) {
+          if (subIssue.state.toLowerCase() === "closed") {
+            _mergeWorkersSpawned.delete(subIssue.issue_number);
+          }
+        }
+
         // Check each sub-issue for state changes
         let newCompletions = 0;
         for (const subIssue of updatedEpic.sub_issues) {
@@ -586,6 +662,68 @@ export const useDevOpsStore = create<DevOpsStore>()(
               completedSinceStart: get().epicMonitor.completedSinceStart + newCompletions,
             },
           });
+
+          // Check if we should auto-start the next phase
+          if (epicMonitor.autoStartNextPhase && updatedEpic.local_repo_path) {
+            // Check if any phase just completed
+            const completedPhase = updatedEpic.phases.find(
+              (p) => p.status === "completed" && p.total_count > 0
+            );
+
+            // Find the next phase that's not started yet
+            const nextPhase = updatedEpic.phases.find(
+              (p) => p.status === "not_started"
+            );
+
+            if (completedPhase && nextPhase) {
+              console.log(
+                `[Epic Monitor] Phase ${completedPhase.phase_number} completed, auto-starting phase ${nextPhase.phase_number}`
+              );
+
+              // Start orchestration for the next phase
+              try {
+                const epicInfo = {
+                  epic_number: updatedEpic.epic_number,
+                  repo: updatedEpic.tracking_repo,
+                  work_repo: updatedEpic.work_repo,
+                  title: updatedEpic.title,
+                  url: updatedEpic.url,
+                  phases: updatedEpic.phases.map((p) => ({
+                    name: p.name,
+                    description: "",
+                    approach: "agent-assisted",
+                    tasks: [],
+                    files: [],
+                    dependencies: [],
+                  })),
+                };
+                const startConfig = {
+                  phases: [nextPhase.phase_number],
+                  auto_spawn_agents: true,
+                  default_agent_type: "claude",
+                  worktree_base: updatedEpic.local_repo_path,
+                };
+                const startResult = await commands.startEpicOrchestration(
+                  epicInfo,
+                  startConfig
+                );
+
+                if (startResult.status === "ok") {
+                  console.log(
+                    `[Epic Monitor] Auto-started phase ${nextPhase.phase_number}:`,
+                    startResult.data
+                  );
+                } else {
+                  console.error(
+                    `[Epic Monitor] Failed to auto-start phase ${nextPhase.phase_number}:`,
+                    startResult.error
+                  );
+                }
+              } catch (err) {
+                console.error("[Epic Monitor] Auto-start error:", err);
+              }
+            }
+          }
         }
 
         set({
@@ -611,6 +749,16 @@ export const useDevOpsStore = create<DevOpsStore>()(
       });
     },
 
+    // Toggle auto-start next phase setting
+    setEpicMonitorAutoStartNextPhase: (enabled: boolean) => {
+      set({
+        epicMonitor: {
+          ...get().epicMonitor,
+          autoStartNextPhase: enabled,
+        },
+      });
+    },
+
     // Increment completed count (for external use)
     incrementCompletedCount: (count = 1) => {
       set({
@@ -631,6 +779,7 @@ export const useDevOpsStore = create<DevOpsStore>()(
         incrementCompletedCount,
         _setAgentRefreshInterval,
         _setSessionRefreshInterval,
+        _setOrphanCleanupInterval,
       } = get();
 
       // Load current machine ID
@@ -649,7 +798,7 @@ export const useDevOpsStore = create<DevOpsStore>()(
       ]);
 
       // Set up event listener for real-time PR detection
-      const unlisten = await listen<AgentPrCreatedEvent>("agent-pr-created", (event) => {
+      const prUnlisten = await listen<AgentPrCreatedEvent>("agent-pr-created", (event) => {
         const { issue_number, pr_url, session } = event.payload;
         console.log(`[DevOps] PR created for #${issue_number}: ${pr_url} (session: ${session})`);
 
@@ -659,7 +808,21 @@ export const useDevOpsStore = create<DevOpsStore>()(
         // Increment completion counter
         incrementCompletedCount(1);
       });
-      set({ _prEventUnlisten: unlisten });
+      set({ _prEventUnlisten: prUnlisten });
+
+      // Set up event listener for orphan container cleanup (for toast notifications)
+      const orphanUnlisten = await listen<OrphanContainerCleanedEvent>("orphan-container-cleaned", (event) => {
+        const { container_name, issue_number } = event.payload;
+        const issueText = issue_number ? `#${issue_number}` : container_name;
+        console.log(`[DevOps] Cleaned up orphan container: ${container_name} (issue: ${issueText})`);
+
+        // Show toast notification
+        toast.info(
+          "Orphan Container Cleaned",
+          `Removed container for ${issueText}`
+        );
+      });
+      set({ _orphanEventUnlisten: orphanUnlisten });
 
       // Set up polling intervals
       // Agents: 12 seconds (staggered from sessions)
@@ -675,6 +838,27 @@ export const useDevOpsStore = create<DevOpsStore>()(
         10000,
       );
       _setSessionRefreshInterval(sessionInterval);
+
+      // Orphan container cleanup: 60 seconds
+      // This runs periodically to clean up Docker containers that were left behind
+      const orphanCleanupInterval = window.setInterval(
+        async () => {
+          try {
+            await commands.cleanupOrphanedContainers();
+            // Toasts are shown via the orphan-container-cleaned event listener
+          } catch (err) {
+            // Silent failure - orphan cleanup is non-critical
+            console.debug("Orphan cleanup check failed (non-critical):", err);
+          }
+        },
+        60000,
+      );
+      _setOrphanCleanupInterval(orphanCleanupInterval);
+
+      // Run initial orphan cleanup
+      commands.cleanupOrphanedContainers().catch((err) => {
+        console.debug("Initial orphan cleanup failed (non-critical):", err);
+      });
     },
 
     // Cleanup intervals and event listeners
@@ -683,7 +867,9 @@ export const useDevOpsStore = create<DevOpsStore>()(
         _agentRefreshInterval,
         _sessionRefreshInterval,
         _epicMonitorInterval,
+        _orphanCleanupInterval,
         _prEventUnlisten,
+        _orphanEventUnlisten,
       } = get();
 
       if (_agentRefreshInterval !== null) {
@@ -701,9 +887,19 @@ export const useDevOpsStore = create<DevOpsStore>()(
         set({ _epicMonitorInterval: null });
       }
 
+      if (_orphanCleanupInterval !== null) {
+        clearInterval(_orphanCleanupInterval);
+        set({ _orphanCleanupInterval: null });
+      }
+
       if (_prEventUnlisten !== null) {
         _prEventUnlisten();
         set({ _prEventUnlisten: null });
+      }
+
+      if (_orphanEventUnlisten !== null) {
+        _orphanEventUnlisten();
+        set({ _orphanEventUnlisten: null });
       }
     },
   })),

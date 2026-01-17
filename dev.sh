@@ -25,12 +25,17 @@ fi
 pkill -9 -f "tauri" 2>/dev/null || true
 pkill -9 -f "vite" 2>/dev/null || true
 
+# Kill any running debug binaries (these survive cargo clean)
+pkill -9 -f "target/debug/kbve" 2>/dev/null || true
+pkill -9 -f "target/debug" 2>/dev/null || true
+
 # Kill any existing app instances (macOS)
 if [[ "$OSTYPE" == "darwin"* ]]; then
-    pkill -f "kbve-app" 2>/dev/null || true
-    pkill -f "KBVE" 2>/dev/null || true
-    pkill -f "Handy" 2>/dev/null || true
-    pkill -f "handy" 2>/dev/null || true
+    pkill -9 -f "kbve-app" 2>/dev/null || true
+    pkill -9 -f "KBVE" 2>/dev/null || true
+    pkill -9 -f "kbve" 2>/dev/null || true
+    pkill -9 -f "Handy" 2>/dev/null || true
+    pkill -9 -f "handy" 2>/dev/null || true
 fi
 
 # Kill any lingering sidecar processes

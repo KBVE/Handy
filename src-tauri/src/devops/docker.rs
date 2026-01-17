@@ -1163,14 +1163,15 @@ pub fn check_claude_auth_volume() -> Result<ClaudeAuthVolumeStatus, String> {
         });
     }
 
-    // Check if volume has auth data by running a quick container to check for .claude.json
+    // Check if volume has auth data by running a quick container to check for .credentials.json
+    // Claude Code stores credentials in .credentials.json (not .claude.json as previously thought)
     let check_output = Command::new("docker")
         .args([
             "run", "--rm",
             "-v", &format!("{}:/claude-auth:ro", CLAUDE_AUTH_VOLUME),
             "alpine:latest",
             "sh", "-c",
-            "test -f /claude-auth/.claude.json && cat /claude-auth/.claude.json | head -1 || echo 'NO_AUTH'"
+            "test -f /claude-auth/.credentials.json && cat /claude-auth/.credentials.json | head -1 || echo 'NO_AUTH'"
         ])
         .output()
         .map_err(|e| format!("Failed to check auth data: {}", e))?;
@@ -1185,7 +1186,7 @@ pub fn check_claude_auth_volume() -> Result<ClaudeAuthVolumeStatus, String> {
                 "run", "--rm",
                 "-v", &format!("{}:/claude-auth:ro", CLAUDE_AUTH_VOLUME),
                 "alpine:latest",
-                "stat", "-c", "%y", "/claude-auth/.claude.json"
+                "stat", "-c", "%y", "/claude-auth/.credentials.json"
             ])
             .output()
             .ok()

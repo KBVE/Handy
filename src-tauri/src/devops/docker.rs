@@ -1282,18 +1282,14 @@ exec bash
     Ok(container_name.to_string())
 }
 
-/// Launch Claude auth container in a tmux session
+/// Launch Claude auth container in Terminal.app
 ///
-/// This creates a tmux session that runs the Docker auth container,
-/// then opens Terminal.app and attaches to it (same pattern as gh/claude auth).
+/// This writes a shell script to /tmp and opens Terminal to run it.
+/// The script runs an interactive Docker container for Claude Code authentication.
 pub fn launch_claude_auth_in_terminal() -> Result<String, String> {
-    // Use the same socket name as other Handy tmux sessions
-    const SOCKET_NAME: &str = "handy";
-
     // Ensure the auth volume exists
     ensure_claude_auth_volume()?;
 
-    let session_name = "handy-auth-claude-docker";
     let container_name = "handy-claude-auth-setup";
 
     // Remove any existing auth container first
@@ -1301,59 +1297,67 @@ pub fn launch_claude_auth_in_terminal() -> Result<String, String> {
         .args(["rm", "-f", container_name])
         .output();
 
-    // Kill any existing session with this name
-    let _ = Command::new("tmux")
-        .args(["-L", SOCKET_NAME, "kill-session", "-t", session_name])
-        .output();
-
-    // Build the docker command to run in the tmux session
-    let docker_cmd = format!(
-        r#"docker run -it --rm --name {} -v {}:/home/node/.claude -e HOME=/home/node -w /home/node node:20-bookworm bash -c 'echo "==================================================" && echo "   Claude Code Authentication Setup" && echo "==================================================" && echo "" && echo "Installing Claude Code..." && npm install -g @anthropic-ai/claude-code > /dev/null 2>&1 && echo "✅ Claude Code installed" && echo "" && echo "Now run: claude /login" && echo "" && echo "After authenticating, your credentials will be saved" && echo "for all future Handy sandbox containers." && echo "" && echo "Type exit when done." && echo "==================================================" && exec bash'"#,
-        container_name, CLAUDE_AUTH_VOLUME
+    // Write a shell script that runs the docker command
+    let script_path = "/tmp/handy-claude-auth-setup.sh";
+    let script_content = format!(
+        r#"#!/bin/bash
+echo "=================================================="
+echo "   Claude Code Authentication Setup"
+echo "=================================================="
+echo ""
+echo "Starting Docker container..."
+docker run -it --rm \
+    --name {container_name} \
+    -v {volume}:/home/node/.claude \
+    -e HOME=/home/node \
+    -w /home/node \
+    node:20-bookworm \
+    bash -c '
+        echo "Installing Claude Code..."
+        npm install -g @anthropic-ai/claude-code > /dev/null 2>&1
+        echo "[OK] Claude Code installed"
+        echo ""
+        echo "Now run: claude /login"
+        echo ""
+        echo "After authenticating, your credentials will be saved"
+        echo "for all future Handy sandbox containers."
+        echo ""
+        echo "Type exit when done."
+        echo "=================================================="
+        exec bash
+    '
+echo ""
+echo "Done. You can close this window."
+"#,
+        container_name = container_name,
+        volume = CLAUDE_AUTH_VOLUME
     );
 
-    // Create a tmux session that runs the docker command
-    let result = Command::new("tmux")
-        .args([
-            "-L", SOCKET_NAME,
-            "new-session", "-d",
-            "-s", session_name,
-            "-x", "120",
-            "-y", "30",
-            "bash", "-c", &docker_cmd,
-        ])
+    // Write the script
+    std::fs::write(script_path, &script_content)
+        .map_err(|e| format!("Failed to write script: {}", e))?;
+
+    // Make it executable
+    let _ = Command::new("chmod")
+        .args(["+x", script_path])
+        .output();
+
+    // Open Terminal and run the script
+    let result = Command::new("open")
+        .args(["-a", "Terminal", script_path])
         .output();
 
     match result {
         Ok(output) => {
             if output.status.success() {
-                // Open Terminal.app and attach to the session
-                let _ = Command::new("open")
-                    .args(["-a", "Terminal"])
-                    .spawn();
-
-                // Give Terminal a moment to open, then attach
-                std::thread::sleep(std::time::Duration::from_millis(500));
-
-                // Attach using the same socket
-                let _ = Command::new("osascript")
-                    .args([
-                        "-e",
-                        &format!(
-                            "tell application \"Terminal\" to do script \"tmux -L {} attach-session -t {}\"",
-                            SOCKET_NAME, session_name
-                        ),
-                    ])
-                    .spawn();
-
-                log::info!("Launched Claude auth container in tmux session: {}", session_name);
-                Ok(session_name.to_string())
+                log::info!("Launched Claude auth container via Terminal");
+                Ok(container_name.to_string())
             } else {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                Err(format!("Failed to create tmux session: {}", stderr))
+                Err(format!("Failed to open Terminal: {}", stderr))
             }
         }
-        Err(e) => Err(format!("Failed to run tmux: {}", e)),
+        Err(e) => Err(format!("Failed to run open command: {}", e)),
     }
 }
 

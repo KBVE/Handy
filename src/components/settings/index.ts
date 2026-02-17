@@ -9,6 +9,7 @@ export { CoachingSettings } from "./coaching/CoachingSettings";
 export { CoachSettings } from "./coaching/CoachSettings";
 export { LiveSettings } from "./live/LiveSettings";
 export { OnichanSettings } from "./onichan/OnichanSettings";
+export { OnichanLayout } from "./onichan/OnichanLayout";
 export { DiscordSettings } from "./discord/DiscordSettings";
 export { MemorySettings } from "./memory/MemorySettings";
 export { CredentialsSettings } from "./credentials/CredentialsSettings";

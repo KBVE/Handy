@@ -467,5 +467,30 @@
   },
   "overlay": {
     "transcribing": "Đang chuyển đổi..."
+  },
+  "onichan": {
+    "tabs": {
+      "core": "Chính",
+      "chat": "Trò chuyện",
+      "discord": "Discord",
+      "models": "Mô hình"
+    },
+    "core": {
+      "description": "Khởi động tất cả dịch vụ chỉ với một cú nhấp",
+      "startAll": "Khởi động tất cả",
+      "stopAll": "Dừng tất cả",
+      "start": "Khởi động",
+      "stop": "Dừng",
+      "starting": "Đang khởi động...",
+      "running": "Đang hoạt động",
+      "ready": "Sẵn sàng khởi động",
+      "notConfigured": "Chưa cấu hình",
+      "noConfig": "Chưa có dịch vụ nào được cấu hình",
+      "noConfigHint": "Sử dụng các tab Mô hình và Discord để cấu hình dịch vụ",
+      "llm": "Mô hình ngôn ngữ",
+      "tts": "Chuyển văn bản thành giọng nói",
+      "discord": "Discord thoại",
+      "memory": "Bộ nhớ"
+    }
   }
 }

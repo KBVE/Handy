@@ -467,5 +467,30 @@
   },
   "overlay": {
     "transcribing": "Transcription..."
+  },
+  "onichan": {
+    "tabs": {
+      "core": "Principal",
+      "chat": "Chat",
+      "discord": "Discord",
+      "models": "Modèles"
+    },
+    "core": {
+      "description": "Démarrer tous les services en un clic",
+      "startAll": "Tout démarrer",
+      "stopAll": "Tout arrêter",
+      "start": "Démarrer",
+      "stop": "Arrêter",
+      "starting": "Démarrage...",
+      "running": "Actif",
+      "ready": "Prêt à démarrer",
+      "notConfigured": "Non configuré",
+      "noConfig": "Aucun service configuré",
+      "noConfigHint": "Utilisez les onglets Modèles et Discord pour configurer les services",
+      "llm": "Modèle de langage",
+      "tts": "Synthèse vocale",
+      "discord": "Discord voix",
+      "memory": "Mémoire"
+    }
   }
 }

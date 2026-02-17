@@ -114,6 +114,9 @@ impl DiscordConversationManager {
         // Clear any old audio queue
         self.audio_queue.lock().unwrap().clear();
 
+        // Load the transcription model in the background
+        self.transcription_manager.initiate_model_load();
+
         // First, enable listening on the Discord sidecar
         self.discord_manager.enable_listening()?;
 

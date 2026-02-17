@@ -2,7 +2,15 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useSidecarStore } from "@/stores/sidecarStore";
 import { commands } from "@/bindings";
-import { Brain, Volume2, MessageCircle, Database, X } from "lucide-react";
+import {
+  Brain,
+  Volume2,
+  MessageCircle,
+  Database,
+  X,
+  Play,
+  Square,
+} from "lucide-react";
 
 type SidecarState = "online" | "offline" | "loading";
 
@@ -32,7 +40,7 @@ export const SidecarStatus: React.FC = () => {
   const [llmModelName, setLlmModelName] = useState<string | undefined>();
   const popoverRef = useRef<HTMLDivElement>(null);
 
-  // Use global sidecar store instead of local state
+  // Use global sidecar store
   const {
     llmLoaded,
     llmLoading,
@@ -42,9 +50,28 @@ export const SidecarStatus: React.FC = () => {
     discordInVoice,
     discordGuild,
     discordChannel,
+    discordLoading,
     memoryRunning,
     memoryModelLoaded,
     memoryCount,
+    memoryLoading,
+    // Last-used config
+    lastLlmModelId,
+    lastTtsModelId,
+    lastDiscordGuildName,
+    lastDiscordChannelName,
+    lastDiscordGuildId,
+    lastDiscordChannelId,
+    lastEmbeddingModelId,
+    // Quick-start/stop actions
+    quickStartLlm,
+    unloadLlm,
+    quickStartTts,
+    unloadTts,
+    quickStartDiscord,
+    quickStopDiscord,
+    quickStartMemory,
+    quickStopMemory,
   } = useSidecarStore();
 
   // Derive states from store values
@@ -58,9 +85,16 @@ export const SidecarStatus: React.FC = () => {
     : ttsLoaded
       ? "online"
       : "offline";
-  const discordState: SidecarState =
-    discordConnected || discordInVoice ? "online" : "offline";
-  const memoryState: SidecarState = memoryRunning ? "online" : "offline";
+  const discordState: SidecarState = discordLoading
+    ? "loading"
+    : discordConnected || discordInVoice
+      ? "online"
+      : "offline";
+  const memoryState: SidecarState = memoryLoading
+    ? "loading"
+    : memoryRunning
+      ? "online"
+      : "offline";
 
   // Fetch LLM model name when LLM is loaded (this is display-only, not state)
   const fetchModelName = useCallback(async () => {
@@ -115,13 +149,13 @@ export const SidecarStatus: React.FC = () => {
                   : t("footer.popover.notLoaded")}
               </span>
             </div>
-            {llmModelName && (
+            {(llmModelName || (!llmLoaded && lastLlmModelId)) && (
               <div className="flex items-center justify-between">
                 <span className="text-text/60">
                   {t("footer.popover.model")}
                 </span>
                 <span className="text-text/80 truncate max-w-32">
-                  {llmModelName}
+                  {llmModelName ?? lastLlmModelId}
                 </span>
               </div>
             )}
@@ -142,6 +176,16 @@ export const SidecarStatus: React.FC = () => {
                   : t("footer.popover.notLoaded")}
               </span>
             </div>
+            {!ttsLoaded && lastTtsModelId && (
+              <div className="flex items-center justify-between">
+                <span className="text-text/60">
+                  {t("footer.popover.model")}
+                </span>
+                <span className="text-text/80 truncate max-w-32">
+                  {lastTtsModelId}
+                </span>
+              </div>
+            )}
             <p className="text-xs text-text/40 pt-2 border-t border-mid-gray/20">
               {t("footer.popover.ttsDescription")}
             </p>
@@ -175,23 +219,24 @@ export const SidecarStatus: React.FC = () => {
                   : t("footer.popover.no")}
               </span>
             </div>
-            {discordGuild && (
+            {(discordGuild || (!discordConnected && lastDiscordGuildName)) && (
               <div className="flex items-center justify-between">
                 <span className="text-text/60">
                   {t("footer.popover.server")}
                 </span>
                 <span className="text-text/80 truncate max-w-32">
-                  {discordGuild}
+                  {discordGuild ?? lastDiscordGuildName}
                 </span>
               </div>
             )}
-            {discordChannel && (
+            {(discordChannel ||
+              (!discordInVoice && lastDiscordChannelName)) && (
               <div className="flex items-center justify-between">
                 <span className="text-text/60">
                   {t("footer.popover.channel")}
                 </span>
                 <span className="text-text/80 truncate max-w-32">
-                  {discordChannel}
+                  {discordChannel ?? lastDiscordChannelName}
                 </span>
               </div>
             )}
@@ -230,6 +275,16 @@ export const SidecarStatus: React.FC = () => {
                   : t("footer.popover.notLoaded")}
               </span>
             </div>
+            {!memoryRunning && lastEmbeddingModelId && (
+              <div className="flex items-center justify-between">
+                <span className="text-text/60">
+                  {t("footer.popover.model")}
+                </span>
+                <span className="text-text/80 truncate max-w-32">
+                  {lastEmbeddingModelId}
+                </span>
+              </div>
+            )}
             {memoryRunning && (
               <div className="flex items-center justify-between">
                 <span className="text-text/60">
@@ -243,6 +298,161 @@ export const SidecarStatus: React.FC = () => {
             </p>
           </div>
         );
+
+      default:
+        return null;
+    }
+  };
+
+  const renderPopoverActions = (id: string) => {
+    switch (id) {
+      case "llm": {
+        if (llmLoading) {
+          return (
+            <span className="text-xs text-yellow-400 animate-pulse">
+              {t("footer.popover.starting")}
+            </span>
+          );
+        }
+        if (llmLoaded) {
+          return (
+            <button
+              onClick={unloadLlm}
+              className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs transition-colors cursor-pointer"
+            >
+              <Square className="w-3 h-3" />
+              {t("footer.popover.stop")}
+            </button>
+          );
+        }
+        if (lastLlmModelId) {
+          return (
+            <button
+              onClick={quickStartLlm}
+              className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2 rounded bg-green-500/10 hover:bg-green-500/20 text-green-400 text-xs transition-colors cursor-pointer"
+            >
+              <Play className="w-3 h-3" />
+              {t("footer.popover.start")}
+            </button>
+          );
+        }
+        return (
+          <span className="text-xs text-text/40">
+            {t("footer.popover.notConfigured")}
+          </span>
+        );
+      }
+
+      case "tts": {
+        if (ttsLoading) {
+          return (
+            <span className="text-xs text-yellow-400 animate-pulse">
+              {t("footer.popover.starting")}
+            </span>
+          );
+        }
+        if (ttsLoaded) {
+          return (
+            <button
+              onClick={unloadTts}
+              className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs transition-colors cursor-pointer"
+            >
+              <Square className="w-3 h-3" />
+              {t("footer.popover.stop")}
+            </button>
+          );
+        }
+        if (lastTtsModelId) {
+          return (
+            <button
+              onClick={quickStartTts}
+              className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2 rounded bg-green-500/10 hover:bg-green-500/20 text-green-400 text-xs transition-colors cursor-pointer"
+            >
+              <Play className="w-3 h-3" />
+              {t("footer.popover.start")}
+            </button>
+          );
+        }
+        return (
+          <span className="text-xs text-text/40">
+            {t("footer.popover.notConfigured")}
+          </span>
+        );
+      }
+
+      case "discord": {
+        if (discordLoading) {
+          return (
+            <span className="text-xs text-yellow-400 animate-pulse">
+              {t("footer.popover.starting")}
+            </span>
+          );
+        }
+        if (discordConnected || discordInVoice) {
+          return (
+            <button
+              onClick={quickStopDiscord}
+              className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs transition-colors cursor-pointer"
+            >
+              <Square className="w-3 h-3" />
+              {t("footer.popover.stop")}
+            </button>
+          );
+        }
+        if (lastDiscordGuildId && lastDiscordChannelId) {
+          return (
+            <button
+              onClick={quickStartDiscord}
+              className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2 rounded bg-green-500/10 hover:bg-green-500/20 text-green-400 text-xs transition-colors cursor-pointer"
+            >
+              <Play className="w-3 h-3" />
+              {t("footer.popover.start")}
+            </button>
+          );
+        }
+        return (
+          <span className="text-xs text-text/40">
+            {t("footer.popover.notConfigured")}
+          </span>
+        );
+      }
+
+      case "memory": {
+        if (memoryLoading) {
+          return (
+            <span className="text-xs text-yellow-400 animate-pulse">
+              {t("footer.popover.starting")}
+            </span>
+          );
+        }
+        if (memoryRunning) {
+          return (
+            <button
+              onClick={quickStopMemory}
+              className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs transition-colors cursor-pointer"
+            >
+              <Square className="w-3 h-3" />
+              {t("footer.popover.stop")}
+            </button>
+          );
+        }
+        if (lastEmbeddingModelId) {
+          return (
+            <button
+              onClick={quickStartMemory}
+              className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2 rounded bg-green-500/10 hover:bg-green-500/20 text-green-400 text-xs transition-colors cursor-pointer"
+            >
+              <Play className="w-3 h-3" />
+              {t("footer.popover.start")}
+            </button>
+          );
+        }
+        return (
+          <span className="text-xs text-text/40">
+            {t("footer.popover.notConfigured")}
+          </span>
+        );
+      }
 
       default:
         return null;
@@ -320,6 +530,11 @@ export const SidecarStatus: React.FC = () => {
                 {/* Content */}
                 <div className="px-3 py-2 text-xs">
                   {renderPopoverContent(sidecar.id)}
+                </div>
+
+                {/* Action bar */}
+                <div className="px-3 py-2 border-t border-mid-gray/20 flex items-center justify-center">
+                  {renderPopoverActions(sidecar.id)}
                 </div>
 
                 {/* Arrow */}

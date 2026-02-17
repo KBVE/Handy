@@ -541,6 +541,9 @@ pub fn run() {
         commands::memory::stop_memory_sidecar,
         commands::memory::browse_recent_memories,
         commands::memory::list_memory_users,
+        // Sidecar quick-start config commands
+        commands::sidecar_config::get_sidecar_quick_config,
+        commands::sidecar_config::set_sidecar_quick_config_field,
         commands::devops::check_devops_dependencies,
         commands::devops::launch_cli_auth,
         commands::devops::attach_tmux_session,

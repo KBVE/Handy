@@ -41,6 +41,7 @@ interface SidecarStore {
   discordGuild: string | null;
   discordChannel: string | null;
   discordConversationRunning: boolean;
+  discordLoading: boolean;
 
   // Onichan state
   onichanActive: boolean;
@@ -52,25 +53,50 @@ interface SidecarStore {
   memoryModelLoaded: boolean;
   memoryModelId: string | null;
   memoryCount: number;
+  memoryLoading: boolean;
+
+  // Last-used quick-start config
+  lastLlmModelId: string | null;
+  lastTtsModelId: string | null;
+  lastDiscordGuildId: string | null;
+  lastDiscordChannelId: string | null;
+  lastDiscordGuildName: string | null;
+  lastDiscordChannelName: string | null;
+  lastEmbeddingModelId: string | null;
+  quickConfigLoaded: boolean;
 
   // Actions
   initialize: () => Promise<void>;
   refresh: () => Promise<void>;
   cleanup: () => void;
 
+  // Quick-config actions
+  loadQuickConfig: () => Promise<void>;
+  saveQuickConfigField: (key: string, value: string | null) => Promise<void>;
+
   // LLM actions
   loadLlm: (modelId: string) => Promise<void>;
   unloadLlm: () => Promise<void>;
   setLlmLoading: (loading: boolean) => void;
+  quickStartLlm: () => Promise<void>;
 
   // TTS actions
   loadTts: (modelId: string) => Promise<void>;
   unloadTts: () => Promise<void>;
   setTtsLoading: (loading: boolean) => void;
+  quickStartTts: () => Promise<void>;
 
   // Discord actions
   updateDiscordState: (state: Partial<DiscordState>) => void;
   setDiscordConversationRunning: (running: boolean) => void;
+  connectDiscordVoice: (
+    guildId: string,
+    channelId: string,
+    guildName: string,
+    channelName: string,
+  ) => Promise<void>;
+  quickStartDiscord: () => Promise<void>;
+  quickStopDiscord: () => Promise<void>;
 
   // Onichan actions
   updateOnichanState: (state: Partial<OnichanState>) => void;
@@ -78,6 +104,8 @@ interface SidecarStore {
 
   // Memory actions
   updateMemoryState: (state: Partial<MemoryState>) => void;
+  quickStartMemory: () => Promise<void>;
+  quickStopMemory: () => Promise<void>;
 
   // Internal
   _unlisteners: UnlistenFn[];
@@ -99,6 +127,7 @@ export const useSidecarStore = create<SidecarStore>()(
     discordGuild: null,
     discordChannel: null,
     discordConversationRunning: false,
+    discordLoading: false,
 
     onichanActive: false,
     onichanMode: "local",
@@ -108,16 +137,28 @@ export const useSidecarStore = create<SidecarStore>()(
     memoryModelLoaded: false,
     memoryModelId: null,
     memoryCount: 0,
+    memoryLoading: false,
+
+    // Quick-config defaults
+    lastLlmModelId: null,
+    lastTtsModelId: null,
+    lastDiscordGuildId: null,
+    lastDiscordChannelId: null,
+    lastDiscordGuildName: null,
+    lastDiscordChannelName: null,
+    lastEmbeddingModelId: null,
+    quickConfigLoaded: false,
 
     _unlisteners: [],
     _setUnlisteners: (unlisteners) => set({ _unlisteners: unlisteners }),
 
     // Initialize: fetch current state and set up event listeners
     initialize: async () => {
-      const { refresh, _setUnlisteners } = get();
+      const { refresh, loadQuickConfig, _setUnlisteners } = get();
 
       // First, fetch current state from backend
       await refresh();
+      await loadQuickConfig();
 
       // Set up event listeners for state changes
       const unlisteners: UnlistenFn[] = [];
@@ -226,13 +267,46 @@ export const useSidecarStore = create<SidecarStore>()(
       set({ _unlisteners: [] });
     },
 
+    // Load persisted quick-start config from backend
+    loadQuickConfig: async () => {
+      try {
+        const config = await commands.getSidecarQuickConfig();
+        set({
+          lastLlmModelId: config.last_llm_model_id ?? null,
+          lastTtsModelId: config.last_tts_model_id ?? null,
+          lastDiscordGuildId: config.last_discord_guild_id ?? null,
+          lastDiscordChannelId: config.last_discord_channel_id ?? null,
+          lastDiscordGuildName: config.last_discord_guild_name ?? null,
+          lastDiscordChannelName: config.last_discord_channel_name ?? null,
+          lastEmbeddingModelId: config.last_embedding_model_id ?? null,
+          quickConfigLoaded: true,
+        });
+      } catch (error) {
+        console.error("Failed to load sidecar quick config:", error);
+      }
+    },
+
+    // Persist a single config field
+    saveQuickConfigField: async (key: string, value: string | null) => {
+      try {
+        await commands.setSidecarQuickConfigField(key, value);
+      } catch (error) {
+        console.error("Failed to save sidecar config field:", error);
+      }
+    },
+
     // LLM actions
     loadLlm: async (modelId: string) => {
       set({ llmLoading: true });
       try {
         const result = await commands.loadLocalLlm(modelId);
         if (result.status === "ok") {
-          set({ llmLoaded: true, llmModelName: modelId });
+          set({
+            llmLoaded: true,
+            llmModelName: modelId,
+            lastLlmModelId: modelId,
+          });
+          get().saveQuickConfigField("last_llm_model_id", modelId);
         } else {
           console.error("Failed to load LLM:", result.error);
         }
@@ -254,13 +328,20 @@ export const useSidecarStore = create<SidecarStore>()(
 
     setLlmLoading: (loading: boolean) => set({ llmLoading: loading }),
 
+    quickStartLlm: async () => {
+      const { lastLlmModelId, loadLlm } = get();
+      if (!lastLlmModelId) return;
+      await loadLlm(lastLlmModelId);
+    },
+
     // TTS actions
     loadTts: async (modelId: string) => {
       set({ ttsLoading: true });
       try {
         const result = await commands.loadLocalTts(modelId);
         if (result.status === "ok") {
-          set({ ttsLoaded: true });
+          set({ ttsLoaded: true, lastTtsModelId: modelId });
+          get().saveQuickConfigField("last_tts_model_id", modelId);
         } else {
           console.error("Failed to load TTS:", result.error);
         }
@@ -282,6 +363,12 @@ export const useSidecarStore = create<SidecarStore>()(
 
     setTtsLoading: (loading: boolean) => set({ ttsLoading: loading }),
 
+    quickStartTts: async () => {
+      const { lastTtsModelId, loadTts } = get();
+      if (!lastTtsModelId) return;
+      await loadTts(lastTtsModelId);
+    },
+
     // Discord actions
     updateDiscordState: (state: Partial<DiscordState>) => {
       set({
@@ -294,6 +381,85 @@ export const useSidecarStore = create<SidecarStore>()(
 
     setDiscordConversationRunning: (running: boolean) => {
       set({ discordConversationRunning: running });
+    },
+
+    connectDiscordVoice: async (
+      guildId: string,
+      channelId: string,
+      guildName: string,
+      channelName: string,
+    ) => {
+      set({ discordLoading: true });
+      try {
+        const result = await commands.discordConnect(guildId, channelId);
+        if (result.status === "ok") {
+          set({
+            lastDiscordGuildId: guildId,
+            lastDiscordChannelId: channelId,
+            lastDiscordGuildName: guildName,
+            lastDiscordChannelName: channelName,
+          });
+          get().saveQuickConfigField("last_discord_guild_id", guildId);
+          get().saveQuickConfigField("last_discord_channel_id", channelId);
+          get().saveQuickConfigField("last_discord_guild_name", guildName);
+          get().saveQuickConfigField("last_discord_channel_name", channelName);
+        } else {
+          console.error("Failed to connect Discord voice:", result.error);
+        }
+      } catch (error) {
+        console.error("Failed to connect Discord voice:", error);
+      } finally {
+        set({ discordLoading: false });
+      }
+    },
+
+    quickStartDiscord: async () => {
+      const { lastDiscordGuildId, lastDiscordChannelId, discordConnected } =
+        get();
+      set({ discordLoading: true });
+      try {
+        // Step 1: Connect bot to Discord gateway if not already connected
+        if (!discordConnected) {
+          const hasToken = await commands.discordHasToken();
+          if (!hasToken) {
+            console.error("No Discord token configured");
+            return;
+          }
+          const connectResult = await commands.discordConnectWithStoredToken();
+          if (connectResult.status !== "ok") {
+            console.error("Failed to connect Discord:", connectResult.error);
+            return;
+          }
+          // Wait briefly for Discord cache to populate
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+
+        // Step 2: Join last voice channel if we have saved config
+        if (lastDiscordGuildId && lastDiscordChannelId) {
+          const joinResult = await commands.discordConnect(
+            lastDiscordGuildId,
+            lastDiscordChannelId,
+          );
+          if (joinResult.status !== "ok") {
+            console.error("Failed to join voice:", joinResult.error);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to quick-start Discord:", error);
+      } finally {
+        set({ discordLoading: false });
+      }
+    },
+
+    quickStopDiscord: async () => {
+      set({ discordLoading: true });
+      try {
+        await commands.discordDisconnect();
+      } catch (error) {
+        console.error("Failed to disconnect Discord:", error);
+      } finally {
+        set({ discordLoading: false });
+      }
     },
 
     // Onichan actions
@@ -317,6 +483,42 @@ export const useSidecarStore = create<SidecarStore>()(
         memoryModelLoaded: state.model_loaded ?? get().memoryModelLoaded,
         memoryCount: state.total_memories ?? get().memoryCount,
       });
+    },
+
+    quickStartMemory: async () => {
+      const { lastEmbeddingModelId, saveQuickConfigField } = get();
+      const modelId = lastEmbeddingModelId;
+      if (!modelId) return;
+      set({ memoryLoading: true });
+      try {
+        const result = await commands.loadEmbeddingModel(modelId);
+        if (result.status === "ok") {
+          set({
+            memoryRunning: true,
+            memoryModelLoaded: true,
+            lastEmbeddingModelId: modelId,
+          });
+          saveQuickConfigField("last_embedding_model_id", modelId);
+        } else {
+          console.error("Failed to start memory:", result.error);
+        }
+      } catch (error) {
+        console.error("Failed to quick-start memory:", error);
+      } finally {
+        set({ memoryLoading: false });
+      }
+    },
+
+    quickStopMemory: async () => {
+      set({ memoryLoading: true });
+      try {
+        await commands.stopMemorySidecar();
+        set({ memoryRunning: false, memoryModelLoaded: false });
+      } catch (error) {
+        console.error("Failed to stop memory:", error);
+      } finally {
+        set({ memoryLoading: false });
+      }
     },
   })),
 );

@@ -485,7 +485,12 @@
       "llmDescription": "Local language model for AI responses in Onichan mode.",
       "ttsDescription": "Text-to-speech engine for voice responses.",
       "discordDescription": "Discord bot for voice channel integration.",
-      "memoryDescription": "Long-term memory storage for conversation context."
+      "memoryDescription": "Long-term memory storage for conversation context.",
+      "start": "Start",
+      "stop": "Stop",
+      "starting": "Starting...",
+      "stopping": "Stopping...",
+      "notConfigured": "Not configured"
     },
     "devops": {
       "title": "DevOps",

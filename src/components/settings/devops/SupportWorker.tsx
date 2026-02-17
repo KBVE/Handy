@@ -45,7 +45,7 @@ export const SupportWorker: React.FC = () => {
       try {
         const result = await commands.getTmuxSessionOutput(
           SUPPORT_SESSION_NAME,
-          50
+          50,
         );
         if (result.status === "ok" && isMounted) {
           setOutput(result.data);
@@ -75,7 +75,7 @@ export const SupportWorker: React.FC = () => {
       if (masterResult.status === "error") {
         toast.error(
           t("devops.supportWorker.error.masterSession", "Failed to start tmux"),
-          masterResult.error
+          masterResult.error,
         );
         return;
       }
@@ -86,7 +86,7 @@ export const SupportWorker: React.FC = () => {
         undefined, // working_dir - use current
         undefined, // issue_ref
         undefined, // repo
-        "claude" // agent_type
+        "claude", // agent_type
       );
 
       if (result.status === "ok") {
@@ -96,18 +96,21 @@ export const SupportWorker: React.FC = () => {
         await refreshSessions(false);
         toast.success(
           t("devops.supportWorker.success.started", "Support Worker Started"),
-          t("devops.supportWorker.success.startedMessage", "Claude agent is now running")
+          t(
+            "devops.supportWorker.success.startedMessage",
+            "Claude agent is now running",
+          ),
         );
       } else {
         toast.error(
           t("devops.supportWorker.error.create", "Failed to create session"),
-          result.error
+          result.error,
         );
       }
     } catch (err) {
       toast.error(
         t("devops.supportWorker.error.start", "Failed to start"),
-        err instanceof Error ? err.message : String(err)
+        err instanceof Error ? err.message : String(err),
       );
     } finally {
       setIsStarting(false);
@@ -121,18 +124,18 @@ export const SupportWorker: React.FC = () => {
       if (result.status === "ok") {
         await refreshSessions(false);
         toast.success(
-          t("devops.supportWorker.success.stopped", "Support Worker Stopped")
+          t("devops.supportWorker.success.stopped", "Support Worker Stopped"),
         );
       } else {
         toast.error(
           t("devops.supportWorker.error.stop", "Failed to stop session"),
-          result.error
+          result.error,
         );
       }
     } catch (err) {
       toast.error(
         t("devops.supportWorker.error.stop", "Failed to stop"),
-        err instanceof Error ? err.message : String(err)
+        err instanceof Error ? err.message : String(err),
       );
     } finally {
       setIsStopping(false);
@@ -145,7 +148,7 @@ export const SupportWorker: React.FC = () => {
     } catch (err) {
       toast.error(
         t("devops.supportWorker.error.attach", "Failed to attach"),
-        err instanceof Error ? err.message : String(err)
+        err instanceof Error ? err.message : String(err),
       );
     }
   };
@@ -160,7 +163,7 @@ export const SupportWorker: React.FC = () => {
     } catch (err) {
       toast.error(
         t("devops.supportWorker.error.send", "Failed to send message"),
-        err instanceof Error ? err.message : String(err)
+        err instanceof Error ? err.message : String(err),
       );
     } finally {
       setIsSending(false);
@@ -260,7 +263,7 @@ export const SupportWorker: React.FC = () => {
               }}
               placeholder={t(
                 "devops.supportWorker.inputPlaceholder",
-                "Send a message to the support worker..."
+                "Send a message to the support worker...",
               )}
               className="flex-1 px-3 py-2 text-sm bg-background border border-mid-gray/30 rounded-lg focus:outline-none focus:border-logo-primary/50 placeholder:text-mid-gray/50 text-white"
               disabled={isSending}
@@ -287,7 +290,7 @@ export const SupportWorker: React.FC = () => {
         <p className="text-sm text-mid-gray/70">
           {t(
             "devops.supportWorker.description",
-            "Start a general-purpose Claude agent for support tasks, quick questions, or testing. This worker runs in a tmux session and can be used for any ad-hoc assistance."
+            "Start a general-purpose Claude agent for support tasks, quick questions, or testing. This worker runs in a tmux session and can be used for any ad-hoc assistance.",
           )}
         </p>
       )}

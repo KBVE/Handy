@@ -264,8 +264,7 @@ fn detect_project_ports(worktree_path: &str) -> Vec<PortMapping> {
                 ports.push(PortMapping::new(5173)); // Vite
             }
             // Actix/Axum/Rocket web frameworks
-            if content.contains("actix") || content.contains("axum") || content.contains("rocket")
-            {
+            if content.contains("actix") || content.contains("axum") || content.contains("rocket") {
                 ports.push(PortMapping::new(8080));
             }
         }
@@ -281,7 +280,9 @@ fn detect_project_ports(worktree_path: &str) -> Vec<PortMapping> {
                 // Format: - "3000:3000" or - 3000:3000
                 for line in content.lines() {
                     let trimmed = line.trim().trim_start_matches('-').trim();
-                    if trimmed.starts_with('"') || trimmed.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+                    if trimmed.starts_with('"')
+                        || trimmed.chars().next().map_or(false, |c| c.is_ascii_digit())
+                    {
                         let port_str = trimmed.trim_matches('"');
                         if let Some((host, _container)) = port_str.split_once(':') {
                             if let Ok(port) = host.parse::<u16>() {
@@ -375,7 +376,7 @@ pub fn spawn_agent(config: &SpawnConfig, repo_path: &str) -> Result<SpawnResult,
             ports,
             auto_detect_ports: config.sandbox_ports.is_empty(),
             use_agent_network: true, // Enable inter-container communication
-            remap_ports: true, // Avoid port conflicts between agents
+            remap_ports: true,       // Avoid port conflicts between agents
         };
 
         tmux::start_sandboxed_agent_in_session(
@@ -404,7 +405,11 @@ pub fn spawn_agent(config: &SpawnConfig, repo_path: &str) -> Result<SpawnResult,
         worktree: Some(worktree.path.clone()),
         agent_type: config.agent_type.clone(),
         started_at: chrono::Utc::now().to_rfc3339(),
-        status: if is_sandboxed { "working (sandboxed)".to_string() } else { "working".to_string() },
+        status: if is_sandboxed {
+            "working (sandboxed)".to_string()
+        } else {
+            "working".to_string()
+        },
     };
     github::add_agent_metadata_comment(&config.repo, config.issue_number, &issue_metadata)?;
 

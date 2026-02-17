@@ -5,9 +5,7 @@
 //! - Spawning agents for agent-assisted phases
 //! - Managing phase progression
 
-use super::{
-    create_sub_issues, EpicInfo, PhaseConfig, SubIssueConfig, SubIssueInfo,
-};
+use super::{create_sub_issues, EpicInfo, PhaseConfig, SubIssueConfig, SubIssueInfo};
 use crate::devops::orchestrator;
 
 /// Maximum length for issue titles - keep them concise and readable
@@ -97,25 +95,33 @@ pub async fn start_orchestration(
     };
 
     // First, check for existing sub-issues for this epic (include closed to avoid re-creating)
-    let existing_issues = github::list_all_issues_async(&epic.repo, vec![]).await.unwrap_or_default();
+    let existing_issues = github::list_all_issues_async(&epic.repo, vec![])
+        .await
+        .unwrap_or_default();
     let existing_phase_issues: std::collections::HashMap<u32, _> = existing_issues
         .iter()
         .filter(|issue| {
-            issue.body.as_ref()
+            issue
+                .body
+                .as_ref()
                 .map(|b| b.contains(&format!("Epic**: #{}", epic.epic_number)))
                 .unwrap_or(false)
         })
         .filter_map(|issue| {
             // Extract phase number from body
-            issue.body.as_ref().and_then(|body| {
-                body.lines()
-                    .find(|line| line.contains("**Phase**:"))
-                    .and_then(|line| {
-                        line.split("**Phase**:")
-                            .nth(1)
-                            .and_then(|s| s.trim().parse::<u32>().ok())
-                    })
-            }).map(|phase| (phase, issue))
+            issue
+                .body
+                .as_ref()
+                .and_then(|body| {
+                    body.lines()
+                        .find(|line| line.contains("**Phase**:"))
+                        .and_then(|line| {
+                            line.split("**Phase**:")
+                                .nth(1)
+                                .and_then(|s| s.trim().parse::<u32>().ok())
+                        })
+                })
+                .map(|phase| (phase, issue))
         })
         .collect();
 
@@ -197,9 +203,8 @@ pub async fn start_orchestration(
     if config.auto_spawn_agents {
         // Validate worktree_base is a valid git repository path
         let worktree_path = std::path::Path::new(&config.worktree_base);
-        let is_valid_git_repo = worktree_path.exists()
-            && worktree_path.is_dir()
-            && worktree_path.join(".git").exists();
+        let is_valid_git_repo =
+            worktree_path.exists() && worktree_path.is_dir() && worktree_path.join(".git").exists();
 
         if !is_valid_git_repo {
             result.warnings.push(format!(
@@ -341,7 +346,7 @@ fn spawn_agent_for_issue(
         session_name: None,
         worktree_prefix: Some("handy-agent".to_string()),
         working_labels: vec!["staging".to_string()],
-        use_sandbox: false, // TODO: Pass from config
+        use_sandbox: false,    // TODO: Pass from config
         sandbox_ports: vec![], // Auto-detect ports from project
     };
 
@@ -405,16 +410,10 @@ pub async fn get_epic_phase_status(
             .collect();
 
         let total = phase_issues.len() as u32;
-        let completed = phase_issues
-            .iter()
-            .filter(|i| i.state == "closed")
-            .count() as u32;
+        let completed = phase_issues.iter().filter(|i| i.state == "closed").count() as u32;
         let in_progress = phase_issues
             .iter()
-            .filter(|i| {
-                i.state == "open"
-                    && i.labels.iter().any(|l| l == "staging")
-            })
+            .filter(|i| i.state == "open" && i.labels.iter().any(|l| l == "staging"))
             .count() as u32;
 
         // Determine status:
@@ -478,7 +477,8 @@ pub async fn update_epic_phase_status_on_github(
         0
     };
 
-    let updated_body = update_progress_in_body(&updated_body, completed_issues, total_issues, percentage);
+    let updated_body =
+        update_progress_in_body(&updated_body, completed_issues, total_issues, percentage);
 
     // Update the issue
     github::update_issue_body_async(epic_repo, epic_number, &updated_body).await
@@ -490,10 +490,7 @@ fn update_phases_in_body(body: &str, phase_statuses: &[PhaseStatus]) -> String {
 
     for status in phase_statuses {
         // Pattern to match the phase header and status line
-        let phase_pattern = format!(
-            "### Phase {}: {}",
-            status.phase_number, status.phase_name
-        );
+        let phase_pattern = format!("### Phase {}: {}", status.phase_number, status.phase_name);
 
         // Find the phase section and update its status
         if let Some(phase_start) = result.find(&phase_pattern) {
@@ -548,7 +545,10 @@ fn update_progress_in_body(body: &str, completed: u32, total: u32, percentage: u
             let after_newline = &after_header[line_start + 1..];
             if let Some(line_end) = after_newline.find('\n') {
                 // Replace the progress line
-                let progress_line = format!("{}/{} sub-issues completed ({}%)", completed, total, percentage);
+                let progress_line = format!(
+                    "{}/{} sub-issues completed ({}%)",
+                    completed, total, percentage
+                );
                 let before = &body[..progress_start + line_start + 1];
                 let after = &after_newline[line_end..];
                 return format!("{}{}{}", before, progress_line, after);

@@ -1426,7 +1426,9 @@ pub async fn find_prs_for_issue_async(
             if let Ok(merged_prs) = list_prs(&repo, Some("merged"), None, Some(50)) {
                 for pr in merged_prs {
                     if let Some(body) = &pr.body {
-                        if body.contains(&issue_ref) && !found_prs.iter().any(|p| p.number == pr.number) {
+                        if body.contains(&issue_ref)
+                            && !found_prs.iter().any(|p| p.number == pr.number)
+                        {
                             found_prs.push(pr);
                         }
                     }

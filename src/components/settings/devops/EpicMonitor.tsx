@@ -58,8 +58,10 @@ export const EpicMonitor: React.FC = () => {
         toast.success(
           t("devops.epicMonitor.mergePRSuccess"),
           result.phase_complete
-            ? t("devops.epicMonitor.phaseCompleteMessage", { nextPhase: result.next_phase })
-            : undefined
+            ? t("devops.epicMonitor.phaseCompleteMessage", {
+                nextPhase: result.next_phase,
+              })
+            : undefined,
         );
         // Refresh the epic state
         checkEpicCompletions();
@@ -78,7 +80,11 @@ export const EpicMonitor: React.FC = () => {
     setMergingAll(true);
     try {
       const result = await invoke<{
-        merges: Array<{ success: boolean; issue_number: number; error?: string }>;
+        merges: Array<{
+          success: boolean;
+          issue_number: number;
+          error?: string;
+        }>;
         completed_phases: number[];
         next_phase?: number;
       }>("process_ready_prs", {
@@ -94,12 +100,16 @@ export const EpicMonitor: React.FC = () => {
         toast.success(
           t("devops.epicMonitor.mergeAllSuccess", { count: successCount }),
           result.completed_phases.length > 0
-            ? t("devops.epicMonitor.phasesCompleted", { phases: result.completed_phases.join(", ") })
-            : undefined
+            ? t("devops.epicMonitor.phasesCompleted", {
+                phases: result.completed_phases.join(", "),
+              })
+            : undefined,
         );
       }
       if (failCount > 0) {
-        toast.warning(t("devops.epicMonitor.mergeAllPartialFail", { count: failCount }));
+        toast.warning(
+          t("devops.epicMonitor.mergeAllPartialFail", { count: failCount }),
+        );
       }
 
       // Refresh the epic state
@@ -115,7 +125,7 @@ export const EpicMonitor: React.FC = () => {
     startEpicMonitoring();
     toast.info(
       t("devops.epicMonitor.started"),
-      t("devops.epicMonitor.startedMessage")
+      t("devops.epicMonitor.startedMessage"),
     );
   };
 
@@ -130,7 +140,10 @@ export const EpicMonitor: React.FC = () => {
       await markPhaseStatus(phaseNumber, status);
       toast.success(
         t("devops.epicMonitor.phaseUpdated"),
-        t("devops.epicMonitor.phaseUpdatedMessage", { phase: phaseNumber, status })
+        t("devops.epicMonitor.phaseUpdatedMessage", {
+          phase: phaseNumber,
+          status,
+        }),
       );
     } catch (err) {
       toast.error(t("devops.epicMonitor.phaseUpdateFailed"));
@@ -143,15 +156,35 @@ export const EpicMonitor: React.FC = () => {
   const getPhaseStatusInfo = (status: string) => {
     switch (status) {
       case "completed":
-        return { icon: CheckCircle, color: "text-green-400", bgColor: "bg-green-500/10" };
+        return {
+          icon: CheckCircle,
+          color: "text-green-400",
+          bgColor: "bg-green-500/10",
+        };
       case "ready":
-        return { icon: GitPullRequest, color: "text-yellow-400", bgColor: "bg-yellow-500/10" };
+        return {
+          icon: GitPullRequest,
+          color: "text-yellow-400",
+          bgColor: "bg-yellow-500/10",
+        };
       case "in_progress":
-        return { icon: Clock, color: "text-blue-400", bgColor: "bg-blue-500/10" };
+        return {
+          icon: Clock,
+          color: "text-blue-400",
+          bgColor: "bg-blue-500/10",
+        };
       case "skipped":
-        return { icon: SkipForward, color: "text-gray-400", bgColor: "bg-gray-500/10" };
+        return {
+          icon: SkipForward,
+          color: "text-gray-400",
+          bgColor: "bg-gray-500/10",
+        };
       default:
-        return { icon: Pause, color: "text-mid-gray", bgColor: "bg-mid-gray/10" };
+        return {
+          icon: Pause,
+          color: "text-mid-gray",
+          bgColor: "bg-mid-gray/10",
+        };
     }
   };
 
@@ -162,20 +195,25 @@ export const EpicMonitor: React.FC = () => {
   // Debug: Log the sub-issues to understand state
   if (activeEpic) {
     console.log("[EpicMonitor] sub_issues:", activeEpic.sub_issues);
-    console.log("[EpicMonitor] sub_issues details:", activeEpic.sub_issues.map(s => ({
-      issue: s.issue_number,
-      state: s.state,
-      stateLC: s.state.toLowerCase(),
-      isOpen: isOpen(s.state),
-      has_agent: s.has_agent_working,
-      pr_url: s.pr_url,
-    })));
+    console.log(
+      "[EpicMonitor] sub_issues details:",
+      activeEpic.sub_issues.map((s) => ({
+        issue: s.issue_number,
+        state: s.state,
+        stateLC: s.state.toLowerCase(),
+        isOpen: isOpen(s.state),
+        has_agent: s.has_agent_working,
+        pr_url: s.pr_url,
+      })),
+    );
   }
 
   // Count sub-issues by state
   // In Progress: Agent is working, no PR yet
   const inProgressCount = activeEpic
-    ? activeEpic.sub_issues.filter((s) => isOpen(s.state) && s.has_agent_working && !s.pr_url).length
+    ? activeEpic.sub_issues.filter(
+        (s) => isOpen(s.state) && s.has_agent_working && !s.pr_url,
+      ).length
     : 0;
 
   // Ready: PR created, awaiting review/merge (work is done, ready for human review)
@@ -185,7 +223,9 @@ export const EpicMonitor: React.FC = () => {
 
   // Queued: Open issues with no agent assigned and no PR (waiting to be picked up)
   const queuedCount = activeEpic
-    ? activeEpic.sub_issues.filter((s) => isOpen(s.state) && !s.has_agent_working && !s.pr_url).length
+    ? activeEpic.sub_issues.filter(
+        (s) => isOpen(s.state) && !s.has_agent_working && !s.pr_url,
+      ).length
     : 0;
 
   // Completed: Issue is closed (PR merged)
@@ -290,7 +330,9 @@ export const EpicMonitor: React.FC = () => {
         <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
           <div className="flex items-center gap-2 text-blue-400">
             <Clock className="w-4 h-4" />
-            <span className="text-xs">{t("devops.epicMonitor.inProgress")}</span>
+            <span className="text-xs">
+              {t("devops.epicMonitor.inProgress")}
+            </span>
           </div>
           <p className="text-xl font-bold text-white mt-1">{inProgressCount}</p>
         </div>
@@ -364,7 +406,11 @@ export const EpicMonitor: React.FC = () => {
           </h4>
           <div className="space-y-2">
             {activeEpic.phases.map((phase) => {
-              const { icon: StatusIcon, color, bgColor } = getPhaseStatusInfo(phase.status);
+              const {
+                icon: StatusIcon,
+                color,
+                bgColor,
+              } = getPhaseStatusInfo(phase.status);
               const isMarking = markingPhase === phase.phase_number;
 
               return (
@@ -376,11 +422,15 @@ export const EpicMonitor: React.FC = () => {
                     <StatusIcon className={`w-5 h-5 ${color}`} />
                     <div>
                       <p className="text-sm font-medium text-white">
-                        {t("devops.epicMonitor.phaseNumber", { number: phase.phase_number })}: {phase.name}
+                        {t("devops.epicMonitor.phaseNumber", {
+                          number: phase.phase_number,
+                        })}
+                        : {phase.name}
                       </p>
                       <p className="text-xs text-mid-gray capitalize">
                         {phase.status.replace("_", " ")}
-                        {phase.total_count > 0 && ` (${phase.completed_count}/${phase.total_count})`}
+                        {phase.total_count > 0 &&
+                          ` (${phase.completed_count}/${phase.total_count})`}
                       </p>
                     </div>
                   </div>
@@ -388,7 +438,9 @@ export const EpicMonitor: React.FC = () => {
                   {/* Mark as complete button (only show if not already completed) */}
                   {phase.status !== "completed" && (
                     <button
-                      onClick={() => handleMarkPhase(phase.phase_number, "completed")}
+                      onClick={() =>
+                        handleMarkPhase(phase.phase_number, "completed")
+                      }
                       disabled={isMarking || epicLoading}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400 transition-colors disabled:opacity-50"
                       title={t("devops.epicMonitor.markComplete")}
@@ -432,7 +484,9 @@ export const EpicMonitor: React.FC = () => {
                     #{subIssue.issue_number}
                   </a>
                   <span className="text-mid-gray">-</span>
-                  <span className="text-white truncate flex-1">{subIssue.title}</span>
+                  <span className="text-white truncate flex-1">
+                    {subIssue.title}
+                  </span>
                   {subIssue.session_name && (
                     <span className="text-xs text-mid-gray bg-mid-gray/20 px-2 py-0.5 rounded">
                       {subIssue.session_name}
@@ -482,7 +536,9 @@ export const EpicMonitor: React.FC = () => {
                     #{subIssue.issue_number}
                   </a>
                   <span className="text-mid-gray">-</span>
-                  <span className="text-white truncate flex-1">{subIssue.title}</span>
+                  <span className="text-white truncate flex-1">
+                    {subIssue.title}
+                  </span>
 
                   {/* PR link */}
                   {subIssue.pr_url && (

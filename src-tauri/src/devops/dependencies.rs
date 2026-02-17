@@ -358,7 +358,11 @@ fn check_docker() -> DependencyStatus {
         name: "docker".to_string(),
         installed,
         // Use authenticated field to indicate daemon is running
-        authenticated: if installed { Some(daemon_running) } else { None },
+        authenticated: if installed {
+            Some(daemon_running)
+        } else {
+            None
+        },
         auth_user: None,
         auth_hint_url: None,
         version,

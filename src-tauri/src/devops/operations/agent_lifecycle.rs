@@ -528,11 +528,7 @@ pub struct SupportWorkerResult {
 pub async fn spawn_support_worker(
     config: SupportWorkerConfig,
 ) -> Result<SupportWorkerResult, String> {
-    let session_name = format!(
-        "handy-support-{}-{}",
-        config.task_type,
-        config.issue_number
-    );
+    let session_name = format!("handy-support-{}-{}", config.task_type, config.issue_number);
 
     // Get machine ID
     let machine_id = get_machine_id()?;
@@ -631,7 +627,10 @@ pub async fn spawn_support_worker(
 ///
 /// When `sandboxed` is true, adds `--dangerously-skip-permissions` flag since
 /// the Docker container provides isolation and we want fully autonomous execution.
-fn build_support_worker_command(config: &SupportWorkerConfig, sandboxed: bool) -> Result<String, String> {
+fn build_support_worker_command(
+    config: &SupportWorkerConfig,
+    sandboxed: bool,
+) -> Result<String, String> {
     // In sandbox mode, use --dangerously-skip-permissions for autonomous execution
     let auto_flag = if sandboxed {
         " --dangerously-skip-permissions"
@@ -643,7 +642,9 @@ fn build_support_worker_command(config: &SupportWorkerConfig, sandboxed: bool) -
         "merge" => {
             // Build gh pr merge command with Claude for conflict resolution
             let merge_method = config.merge_method.as_deref().unwrap_or("squash");
-            let pr_number = config.pr_number.ok_or("PR number required for merge task")?;
+            let pr_number = config
+                .pr_number
+                .ok_or("PR number required for merge task")?;
             let delete_flag = if config.delete_branch {
                 " --delete-branch"
             } else {
@@ -679,7 +680,9 @@ Start by viewing the PR and attempting the merge.""#,
             ))
         }
         "review" => {
-            let pr_number = config.pr_number.ok_or("PR number required for review task")?;
+            let pr_number = config
+                .pr_number
+                .ok_or("PR number required for review task")?;
             Ok(format!(
                 r#"claude{} "Review the PR #{} in {} and provide feedback. Check the diff, look for issues, and approve or request changes." --repo {}"#,
                 auto_flag, pr_number, config.repo, config.repo
@@ -737,7 +740,10 @@ fn build_sandboxed_support_worker_command(
 
     // Mount the persistent Claude auth volume
     // This volume contains credentials from the one-time auth setup container
-    docker_args.push(format!("-v {}:/tmp/claude-auth:ro", crate::devops::docker::get_claude_auth_volume_name()));
+    docker_args.push(format!(
+        "-v {}:/tmp/claude-auth:ro",
+        crate::devops::docker::get_claude_auth_volume_name()
+    ));
 
     // Mount GitHub CLI auth from host (if available) - gh tokens work fine from host
     if let Ok(home) = std::env::var("HOME") {

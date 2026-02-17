@@ -1161,6 +1161,17 @@ async listMemoryUsers() : Promise<Result<MemoryUserInfo[], string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async getSidecarQuickConfig() : Promise<SidecarQuickConfig> {
+    return await TAURI_INVOKE("get_sidecar_quick_config");
+},
+async setSidecarQuickConfigField(key: string, value: string | null) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_sidecar_quick_config_field", { key, value }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 /**
  * Check if required DevOps dependencies (gh, tmux) are installed.
  * Runs in a blocking task to avoid freezing the UI.
@@ -3883,6 +3894,7 @@ export type SessionStatus =
  */
 "Recovered"
 export type ShortcutBinding = { id: string; name: string; description: string; default_binding: string; current_binding: string }
+export type SidecarQuickConfig = { last_llm_model_id: string | null; last_tts_model_id: string | null; last_discord_guild_id: string | null; last_discord_channel_id: string | null; last_discord_guild_name: string | null; last_discord_channel_name: string | null; last_embedding_model_id: string | null }
 /**
  * Configuration for skipping an issue.
  */

@@ -29,6 +29,7 @@ Add a third tab to DevOps Settings called "Orchestration" that provides a unifie
 Build backend infrastructure for pipeline state tracking and issue assignment flow.
 
 **Key Tasks**:
+
 - Create `PipelineItem` struct linking issue → session → worktree → PR
 - Add `list_pipeline_items` command to aggregate current state
 - Add `get_pipeline_history` command for completed items
@@ -39,6 +40,7 @@ Build backend infrastructure for pipeline state tracking and issue assignment fl
 - Track PR status (draft, ready, needs-review, approved, merged)
 
 **Files**:
+
 - `src-tauri/src/devops/pipeline.rs` (new)
 - `src-tauri/src/devops/orchestration.rs` (new)
 - `src-tauri/src/commands/devops.rs` (add commands)
@@ -54,6 +56,7 @@ Build backend infrastructure for pipeline state tracking and issue assignment fl
 Build the Orchestration tab UI with three sections: Active Pipeline, Queued Issues, and Completed Work.
 
 **Key Tasks**:
+
 - Add "Orchestration" tab to DevOpsLayout
 - Create OrchestrationTab component
 - Create ActivePipeline component with flow visualization (Issue → Session → PR)
@@ -64,6 +67,7 @@ Build the Orchestration tab UI with three sections: Active Pipeline, Queued Issu
 - Create CompletedWork component showing merged PRs with linked issues
 
 **Files**:
+
 - `src/components/settings/devops/DevOpsLayout.tsx`
 - `src/components/settings/devops/OrchestrationTab.tsx` (new)
 - `src/components/settings/devops/orchestration/ActivePipeline.tsx` (new)
@@ -83,6 +87,7 @@ Build the Orchestration tab UI with three sections: Active Pipeline, Queued Issu
 Create Zustand store for pipeline state management and integrate with existing DevOps store.
 
 **Key Tasks**:
+
 - Create pipelineStore.ts with Zustand
 - Track active pipeline items
 - Track queued issues
@@ -92,6 +97,7 @@ Create Zustand store for pipeline state management and integrate with existing D
 - Ensure sessions and pipeline stay in sync
 
 **Files**:
+
 - `src/stores/pipelineStore.ts` (new)
 - `src/stores/devopsStore.ts` (update)
 
@@ -106,6 +112,7 @@ Create Zustand store for pipeline state management and integrate with existing D
 Add real-time updates, error handling, and translations.
 
 **Key Tasks**:
+
 - Add Tauri events for pipeline state changes
 - Update UI reactively when state changes
 - Handle agent failures gracefully
@@ -115,6 +122,7 @@ Add real-time updates, error handling, and translations.
 - Update translation.json for en/es/fr/vi
 
 **Files**:
+
 - `src/i18n/locales/*/translation.json`
 
 **Dependencies**: Phase 3 complete
@@ -215,19 +223,20 @@ pub struct PipelineItem {
 
 ### Commands to Implement
 
-| Command | Description |
-|---------|-------------|
-| `list_pipeline_items` | Get all active and recent pipeline items |
-| `get_queued_issues` | Get issues with agent-todo label |
-| `assign_issue_to_agent` | Start work on an issue with specified agent |
-| `skip_issue` | Skip an issue (update labels) |
-| `cancel_pipeline_item` | Stop work on an item, cleanup |
-| `complete_pipeline_item` | Mark work as done, create PR if needed |
-| `refresh_pipeline_state` | Re-sync state from git/gh/tmux |
+| Command                  | Description                                 |
+| ------------------------ | ------------------------------------------- |
+| `list_pipeline_items`    | Get all active and recent pipeline items    |
+| `get_queued_issues`      | Get issues with agent-todo label            |
+| `assign_issue_to_agent`  | Start work on an issue with specified agent |
+| `skip_issue`             | Skip an issue (update labels)               |
+| `cancel_pipeline_item`   | Stop work on an item, cleanup               |
+| `complete_pipeline_item` | Mark work as done, create PR if needed      |
+| `refresh_pipeline_state` | Re-sync state from git/gh/tmux              |
 
 ## Dependencies
 
 This feature builds on existing infrastructure:
+
 - GitHub CLI integration (`gh` commands)
 - Tmux session management
 - Git worktree management

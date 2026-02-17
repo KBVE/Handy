@@ -47,13 +47,19 @@ export const DependencyStatus: React.FC<DependencyStatusProps> = ({
       setCopiedInstall(true);
       toast.success(
         t("devops.dependencies.copied", "Copied!"),
-        t("devops.dependencies.copiedInstallHint", "Install command copied to clipboard")
+        t(
+          "devops.dependencies.copiedInstallHint",
+          "Install command copied to clipboard",
+        ),
       );
       setTimeout(() => setCopiedInstall(false), 2000);
     } catch {
       toast.error(
         t("devops.dependencies.copyFailed", "Copy Failed"),
-        t("devops.dependencies.copyFailedMessage", "Could not copy to clipboard")
+        t(
+          "devops.dependencies.copyFailedMessage",
+          "Could not copy to clipboard",
+        ),
       );
     }
   };
@@ -65,13 +71,16 @@ export const DependencyStatus: React.FC<DependencyStatusProps> = ({
       setCopiedPath(true);
       toast.success(
         t("devops.dependencies.copied", "Copied!"),
-        t("devops.dependencies.copiedPath", "Path copied to clipboard")
+        t("devops.dependencies.copiedPath", "Path copied to clipboard"),
       );
       setTimeout(() => setCopiedPath(false), 2000);
     } catch {
       toast.error(
         t("devops.dependencies.copyFailed", "Copy Failed"),
-        t("devops.dependencies.copyFailedMessage", "Could not copy to clipboard")
+        t(
+          "devops.dependencies.copyFailedMessage",
+          "Could not copy to clipboard",
+        ),
       );
     }
   };

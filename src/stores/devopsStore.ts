@@ -480,7 +480,7 @@ export const useDevOpsStore = create<DevOpsStore>()(
           activeEpic.tracking_repo,
           activeEpic.epic_number,
           phaseNumber,
-          status
+          status,
         );
         if (result.status === "error") {
           set({ epicError: result.error });
@@ -544,7 +544,12 @@ export const useDevOpsStore = create<DevOpsStore>()(
 
     // Check for Epic completions
     checkEpicCompletions: async () => {
-      const { activeEpic, epicMonitor, _previousSubIssueStates, syncActiveEpic } = get();
+      const {
+        activeEpic,
+        epicMonitor,
+        _previousSubIssueStates,
+        syncActiveEpic,
+      } = get();
       if (!activeEpic) return;
 
       set({ epicMonitorChecking: true });
@@ -557,7 +562,7 @@ export const useDevOpsStore = create<DevOpsStore>()(
             for (const result of prResults) {
               if (result.is_new && result.pr_url) {
                 console.log(
-                  `[Epic Monitor] New PR detected for #${result.issue_number}: ${result.pr_url}`
+                  `[Epic Monitor] New PR detected for #${result.issue_number}: ${result.pr_url}`,
                 );
                 // The backend already updated the Epic state, just log for now
                 // A future enhancement could show a toast notification here
@@ -580,7 +585,9 @@ export const useDevOpsStore = create<DevOpsStore>()(
         const { _mergeWorkersSpawned } = get();
 
         if (epicMonitor.autoStartNextPhase) {
-          const readyPhases = updatedEpic.phases.filter((p) => p.status === "ready");
+          const readyPhases = updatedEpic.phases.filter(
+            (p) => p.status === "ready",
+          );
 
           for (const phase of readyPhases) {
             // Find all open sub-issues in this phase that have PRs but no merge worker yet
@@ -591,35 +598,40 @@ export const useDevOpsStore = create<DevOpsStore>()(
                 s.pr_url &&
                 s.pr_number &&
                 !s.has_agent_working && // No agent currently working on it
-                !_mergeWorkersSpawned.has(s.issue_number) // Haven't already spawned a worker
+                !_mergeWorkersSpawned.has(s.issue_number), // Haven't already spawned a worker
             );
 
             for (const subIssue of readySubIssues) {
               console.log(
-                `[Epic Monitor] Auto-spawning merge worker for PR #${subIssue.pr_number} (issue #${subIssue.issue_number})`
+                `[Epic Monitor] Auto-spawning merge worker for PR #${subIssue.pr_number} (issue #${subIssue.issue_number})`,
               );
 
               try {
                 const mergeResult = await commands.mergeReadyPr(
                   subIssue.issue_number,
                   "squash", // Default to squash merge
-                  true // Delete branch after merge
+                  true, // Delete branch after merge
                 );
 
                 if (mergeResult.status === "ok" && mergeResult.data.success) {
                   console.log(
-                    `[Epic Monitor] Merge worker spawned: ${mergeResult.data.support_worker_session}`
+                    `[Epic Monitor] Merge worker spawned: ${mergeResult.data.support_worker_session}`,
                   );
                   // Track that we've spawned a worker for this issue
                   _mergeWorkersSpawned.add(subIssue.issue_number);
                 } else {
                   console.error(
                     `[Epic Monitor] Failed to spawn merge worker for #${subIssue.issue_number}:`,
-                    mergeResult.status === "error" ? mergeResult.error : mergeResult.data.error
+                    mergeResult.status === "error"
+                      ? mergeResult.error
+                      : mergeResult.data.error,
                   );
                 }
               } catch (err) {
-                console.error(`[Epic Monitor] Error spawning merge worker:`, err);
+                console.error(
+                  `[Epic Monitor] Error spawning merge worker:`,
+                  err,
+                );
               }
             }
           }
@@ -635,16 +647,25 @@ export const useDevOpsStore = create<DevOpsStore>()(
         // Check each sub-issue for state changes
         let newCompletions = 0;
         for (const subIssue of updatedEpic.sub_issues) {
-          const previousState = _previousSubIssueStates.get(subIssue.issue_number);
+          const previousState = _previousSubIssueStates.get(
+            subIssue.issue_number,
+          );
 
           // If state changed to closed, it's completed
-          if (previousState && previousState !== "closed" && subIssue.state === "closed") {
+          if (
+            previousState &&
+            previousState !== "closed" &&
+            subIssue.state === "closed"
+          ) {
             newCompletions++;
 
             // Call the completion handler if auto-update is enabled
             if (epicMonitor.autoUpdateGithub) {
               try {
-                await commands.onPipelineItemComplete(subIssue.issue_number, true);
+                await commands.onPipelineItemComplete(
+                  subIssue.issue_number,
+                  true,
+                );
               } catch (err) {
                 console.error("Failed to handle completion:", err);
               }
@@ -659,7 +680,8 @@ export const useDevOpsStore = create<DevOpsStore>()(
           set({
             epicMonitor: {
               ...get().epicMonitor,
-              completedSinceStart: get().epicMonitor.completedSinceStart + newCompletions,
+              completedSinceStart:
+                get().epicMonitor.completedSinceStart + newCompletions,
             },
           });
 
@@ -667,17 +689,17 @@ export const useDevOpsStore = create<DevOpsStore>()(
           if (epicMonitor.autoStartNextPhase && updatedEpic.local_repo_path) {
             // Check if any phase just completed
             const completedPhase = updatedEpic.phases.find(
-              (p) => p.status === "completed" && p.total_count > 0
+              (p) => p.status === "completed" && p.total_count > 0,
             );
 
             // Find the next phase that's not started yet
             const nextPhase = updatedEpic.phases.find(
-              (p) => p.status === "not_started"
+              (p) => p.status === "not_started",
             );
 
             if (completedPhase && nextPhase) {
               console.log(
-                `[Epic Monitor] Phase ${completedPhase.phase_number} completed, auto-starting phase ${nextPhase.phase_number}`
+                `[Epic Monitor] Phase ${completedPhase.phase_number} completed, auto-starting phase ${nextPhase.phase_number}`,
               );
 
               // Start orchestration for the next phase
@@ -705,18 +727,18 @@ export const useDevOpsStore = create<DevOpsStore>()(
                 };
                 const startResult = await commands.startEpicOrchestration(
                   epicInfo,
-                  startConfig
+                  startConfig,
                 );
 
                 if (startResult.status === "ok") {
                   console.log(
                     `[Epic Monitor] Auto-started phase ${nextPhase.phase_number}:`,
-                    startResult.data
+                    startResult.data,
                   );
                 } else {
                   console.error(
                     `[Epic Monitor] Failed to auto-start phase ${nextPhase.phase_number}:`,
-                    startResult.error
+                    startResult.error,
                   );
                 }
               } catch (err) {
@@ -798,30 +820,40 @@ export const useDevOpsStore = create<DevOpsStore>()(
       ]);
 
       // Set up event listener for real-time PR detection
-      const prUnlisten = await listen<AgentPrCreatedEvent>("agent-pr-created", (event) => {
-        const { issue_number, pr_url, session } = event.payload;
-        console.log(`[DevOps] PR created for #${issue_number}: ${pr_url} (session: ${session})`);
+      const prUnlisten = await listen<AgentPrCreatedEvent>(
+        "agent-pr-created",
+        (event) => {
+          const { issue_number, pr_url, session } = event.payload;
+          console.log(
+            `[DevOps] PR created for #${issue_number}: ${pr_url} (session: ${session})`,
+          );
 
-        // Sync Epic state to get updated PR info
-        syncActiveEpic();
+          // Sync Epic state to get updated PR info
+          syncActiveEpic();
 
-        // Increment completion counter
-        incrementCompletedCount(1);
-      });
+          // Increment completion counter
+          incrementCompletedCount(1);
+        },
+      );
       set({ _prEventUnlisten: prUnlisten });
 
       // Set up event listener for orphan container cleanup (for toast notifications)
-      const orphanUnlisten = await listen<OrphanContainerCleanedEvent>("orphan-container-cleaned", (event) => {
-        const { container_name, issue_number } = event.payload;
-        const issueText = issue_number ? `#${issue_number}` : container_name;
-        console.log(`[DevOps] Cleaned up orphan container: ${container_name} (issue: ${issueText})`);
+      const orphanUnlisten = await listen<OrphanContainerCleanedEvent>(
+        "orphan-container-cleaned",
+        (event) => {
+          const { container_name, issue_number } = event.payload;
+          const issueText = issue_number ? `#${issue_number}` : container_name;
+          console.log(
+            `[DevOps] Cleaned up orphan container: ${container_name} (issue: ${issueText})`,
+          );
 
-        // Show toast notification
-        toast.info(
-          "Orphan Container Cleaned",
-          `Removed container for ${issueText}`
-        );
-      });
+          // Show toast notification
+          toast.info(
+            "Orphan Container Cleaned",
+            `Removed container for ${issueText}`,
+          );
+        },
+      );
       set({ _orphanEventUnlisten: orphanUnlisten });
 
       // Set up polling intervals
@@ -841,18 +873,15 @@ export const useDevOpsStore = create<DevOpsStore>()(
 
       // Orphan container cleanup: 60 seconds
       // This runs periodically to clean up Docker containers that were left behind
-      const orphanCleanupInterval = window.setInterval(
-        async () => {
-          try {
-            await commands.cleanupOrphanedContainers();
-            // Toasts are shown via the orphan-container-cleaned event listener
-          } catch (err) {
-            // Silent failure - orphan cleanup is non-critical
-            console.debug("Orphan cleanup check failed (non-critical):", err);
-          }
-        },
-        60000,
-      );
+      const orphanCleanupInterval = window.setInterval(async () => {
+        try {
+          await commands.cleanupOrphanedContainers();
+          // Toasts are shown via the orphan-container-cleaned event listener
+        } catch (err) {
+          // Silent failure - orphan cleanup is non-critical
+          console.debug("Orphan cleanup check failed (non-critical):", err);
+        }
+      }, 60000);
       _setOrphanCleanupInterval(orphanCleanupInterval);
 
       // Run initial orphan cleanup

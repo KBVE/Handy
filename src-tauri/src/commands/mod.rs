@@ -6,6 +6,7 @@ pub mod history;
 pub mod memory;
 pub mod models;
 pub mod onichan;
+pub mod sidecar_config;
 pub mod supabase;
 pub mod transcription;
 

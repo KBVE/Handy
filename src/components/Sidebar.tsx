@@ -8,7 +8,6 @@ import {
   Sparkles,
   Radio,
   Bot,
-  MessageCircle,
   Database,
   Key,
   Terminal,
@@ -24,8 +23,7 @@ import {
   AboutSettings,
   PostProcessingSettings,
   CoachSettings,
-  OnichanSettings,
-  DiscordSettings,
+  OnichanLayout,
   MemorySettings,
   CredentialsSettings,
   DevOpsLayout,
@@ -64,13 +62,7 @@ export const SECTIONS_CONFIG = {
   onichan: {
     labelKey: "sidebar.onichan",
     icon: Bot,
-    component: OnichanSettings,
-    enabled: () => true,
-  },
-  discord: {
-    labelKey: "sidebar.discord",
-    icon: MessageCircle,
-    component: DiscordSettings,
+    component: OnichanLayout,
     enabled: () => true,
   },
   memory: {

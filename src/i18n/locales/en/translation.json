@@ -613,6 +613,29 @@
     }
   },
   "onichan": {
+    "tabs": {
+      "core": "Core",
+      "chat": "Chat",
+      "discord": "Discord",
+      "models": "Models"
+    },
+    "core": {
+      "description": "Quick-start all services with one click",
+      "startAll": "Start All",
+      "stopAll": "Stop All",
+      "start": "Start",
+      "stop": "Stop",
+      "starting": "Starting...",
+      "running": "Running",
+      "ready": "Ready to start",
+      "notConfigured": "Not configured",
+      "noConfig": "No services configured yet",
+      "noConfigHint": "Use the Models and Discord tabs to set up services first",
+      "llm": "Language Model",
+      "tts": "Text-to-Speech",
+      "discord": "Discord Voice",
+      "memory": "Memory"
+    },
     "title": "Onichan Voice Assistant",
     "enable": "Enable",
     "disable": "Disable",

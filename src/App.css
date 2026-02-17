@@ -118,7 +118,8 @@
       color-mix(in srgb, var(--color-accent-purple) 25%, transparent)
     );
     border-radius: 5px;
-    border: 2px solid color-mix(in srgb, var(--color-background) 70%, transparent);
+    border: 2px solid
+      color-mix(in srgb, var(--color-background) 70%, transparent);
   }
 
   .os-theme-custom.os-scrollbar .os-scrollbar-handle:hover {

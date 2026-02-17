@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { commands, DevOpsDependencies, ClaudeAuthVolumeStatus } from "@/bindings";
+import {
+  commands,
+  DevOpsDependencies,
+  ClaudeAuthVolumeStatus,
+} from "@/bindings";
 import { SettingsGroup } from "../../ui/SettingsGroup";
 import { DependencyStatus } from "./DependencyStatus";
 import { SessionManager } from "./SessionManager";
@@ -41,7 +45,8 @@ export const DevOpsSettings: React.FC = () => {
   const [isTogglingAgent, setIsTogglingAgent] = useState<string | null>(null);
   const [sandboxEnabled, setSandboxEnabled] = useState(false);
   const [isTogglingSandbox, setIsTogglingSandbox] = useState(false);
-  const [claudeAuthVolume, setClaudeAuthVolume] = useState<ClaudeAuthVolumeStatus | null>(null);
+  const [claudeAuthVolume, setClaudeAuthVolume] =
+    useState<ClaudeAuthVolumeStatus | null>(null);
   const [isCheckingAuthVolume, setIsCheckingAuthVolume] = useState(false);
   const [isLaunchingAuthSetup, setIsLaunchingAuthSetup] = useState(false);
 
@@ -280,7 +285,10 @@ export const DevOpsSettings: React.FC = () => {
                       {t("devops.sandbox.enableLabel", "Run agents in Docker")}
                     </div>
                     <div className="text-[10px] text-gray-400">
-                      {t("devops.sandbox.enableDescription", "Isolate agents in containers for safety")}
+                      {t(
+                        "devops.sandbox.enableDescription",
+                        "Isolate agents in containers for safety",
+                      )}
                     </div>
                   </div>
                   <button
@@ -306,12 +314,21 @@ export const DevOpsSettings: React.FC = () => {
                         <Key className="w-4 h-4 text-mid-gray" />
                         <div>
                           <div className="text-xs text-white font-medium">
-                            {t("devops.sandbox.claudeAuthLabel", "Claude Code Auth Volume")}
+                            {t(
+                              "devops.sandbox.claudeAuthLabel",
+                              "Claude Code Auth Volume",
+                            )}
                           </div>
                           <div className="text-[10px] text-gray-400">
                             {claudeAuthVolume?.has_auth
-                              ? t("devops.sandbox.claudeAuthReady", "Credentials ready for sandbox use")
-                              : t("devops.sandbox.claudeAuthNeeded", "Login required for sandbox agents")}
+                              ? t(
+                                  "devops.sandbox.claudeAuthReady",
+                                  "Credentials ready for sandbox use",
+                                )
+                              : t(
+                                  "devops.sandbox.claudeAuthNeeded",
+                                  "Login required for sandbox agents",
+                                )}
                           </div>
                         </div>
                       </div>
@@ -331,7 +348,10 @@ export const DevOpsSettings: React.FC = () => {
                           {isLaunchingAuthSetup ? (
                             <Loader2 className="w-3 h-3 animate-spin" />
                           ) : claudeAuthVolume?.has_auth ? (
-                            t("devops.sandbox.claudeAuthRefresh", "Re-authenticate")
+                            t(
+                              "devops.sandbox.claudeAuthRefresh",
+                              "Re-authenticate",
+                            )
                           ) : (
                             t("devops.sandbox.claudeAuthSetup", "Setup Auth")
                           )}
@@ -340,24 +360,36 @@ export const DevOpsSettings: React.FC = () => {
                           onClick={checkClaudeAuthVolume}
                           disabled={isCheckingAuthVolume}
                           className="text-[10px] px-2 py-1 bg-mid-gray/20 hover:bg-mid-gray/30 text-mid-gray rounded transition-colors disabled:opacity-50"
-                          title={t("devops.sandbox.claudeAuthCheck", "Check auth status")}
+                          title={t(
+                            "devops.sandbox.claudeAuthCheck",
+                            "Check auth status",
+                          )}
                         >
-                          <RefreshCcw className={`w-3 h-3 ${isCheckingAuthVolume ? "animate-spin" : ""}`} />
+                          <RefreshCcw
+                            className={`w-3 h-3 ${isCheckingAuthVolume ? "animate-spin" : ""}`}
+                          />
                         </button>
                       </div>
                     </div>
                     {claudeAuthVolume?.last_auth && (
                       <div className="text-[9px] text-gray-500 mt-1">
-                        {t("devops.sandbox.claudeAuthLastAuth", "Last authenticated")}: {claudeAuthVolume.last_auth}
+                        {t(
+                          "devops.sandbox.claudeAuthLastAuth",
+                          "Last authenticated",
+                        )}
+                        : {claudeAuthVolume.last_auth}
                       </div>
                     )}
                   </div>
                 )}
               </div>
-            ) : dependencies.docker.installed && !dependencies.docker.authenticated && (
-              <div className="ml-8 text-xs text-yellow-400/70">
-                {t("devops.dependencies.daemonNotRunning")}
-              </div>
+            ) : (
+              dependencies.docker.installed &&
+              !dependencies.docker.authenticated && (
+                <div className="ml-8 text-xs text-yellow-400/70">
+                  {t("devops.dependencies.daemonNotRunning")}
+                </div>
+              )
             )}
 
             {/* AI Agents (at least one required) */}

@@ -15,14 +15,15 @@
 //! - VS Code compatibility
 //! - Proper toolchain configuration
 
+use once_cell::sync::Lazy;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::process::Command;
-use regex::Regex;
-use once_cell::sync::Lazy;
 
 /// Anthropic's official devcontainer feature for Claude Code
-const CLAUDE_DEVCONTAINER_FEATURE: &str = "ghcr.io/anthropics/devcontainer-features/claude-code:1.0";
+const CLAUDE_DEVCONTAINER_FEATURE: &str =
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0";
 
 /// Regex patterns for sanitizing sensitive data from error messages and logs
 static SENSITIVE_PATTERNS: Lazy<Regex> = Lazy::new(|| {
@@ -248,8 +249,11 @@ pub fn list_network_containers() -> Result<Vec<String>, String> {
 
     let output = Command::new("docker")
         .args([
-            "network", "inspect", AGENT_NETWORK,
-            "--format", "{{range .Containers}}{{.Name}} {{end}}"
+            "network",
+            "inspect",
+            AGENT_NETWORK,
+            "--format",
+            "{{range .Containers}}{{.Name}} {{end}}",
         ])
         .output()
         .map_err(|e| format!("Failed to inspect network: {}", e))?;
@@ -282,7 +286,9 @@ fn get_gh_token() -> Option<String> {
 
 /// Get the Anthropic API key from environment
 fn get_anthropic_key() -> Option<String> {
-    std::env::var("ANTHROPIC_API_KEY").ok().filter(|s| !s.is_empty())
+    std::env::var("ANTHROPIC_API_KEY")
+        .ok()
+        .filter(|s| !s.is_empty())
 }
 
 /// Generate a container name for an issue
@@ -401,7 +407,8 @@ pub fn spawn_sandbox(config: &SandboxConfig) -> Result<SandboxResult, String> {
 
     // Build the agent command based on type, wrapped in a setup script
     // that creates a non-root user (required for --dangerously-skip-permissions)
-    let agent_cmd = build_sandboxed_agent_command(&config.agent_type, &config.issue_ref, config.auto_accept)?;
+    let agent_cmd =
+        build_sandboxed_agent_command(&config.agent_type, &config.issue_ref, config.auto_accept)?;
     let setup_script = build_nonroot_setup_script(&agent_cmd);
 
     // Add command as shell execution
@@ -410,13 +417,19 @@ pub fn spawn_sandbox(config: &SandboxConfig) -> Result<SandboxResult, String> {
     args.push(setup_script);
 
     // Log the docker command (sanitized - hide sensitive env vars)
-    let safe_args: Vec<String> = args.iter().map(|arg| {
-        if arg.contains("GH_TOKEN=") || arg.contains("GITHUB_TOKEN=") || arg.contains("ANTHROPIC_API_KEY=") {
-            "[REDACTED_ENV_VAR]".to_string()
-        } else {
-            arg.clone()
-        }
-    }).collect();
+    let safe_args: Vec<String> = args
+        .iter()
+        .map(|arg| {
+            if arg.contains("GH_TOKEN=")
+                || arg.contains("GITHUB_TOKEN=")
+                || arg.contains("ANTHROPIC_API_KEY=")
+            {
+                "[REDACTED_ENV_VAR]".to_string()
+            } else {
+                arg.clone()
+            }
+        })
+        .collect();
     log::debug!("Spawning sandbox container: docker {}", safe_args.join(" "));
 
     // Run docker command
@@ -821,7 +834,11 @@ pub fn stop_and_remove_container(container_name: &str) -> Result<(), String> {
         if stderr.contains("No such container") {
             Ok(())
         } else {
-            Err(format!("Failed to remove container {}: {}", container_name, sanitize_docker_error(&stderr)))
+            Err(format!(
+                "Failed to remove container {}: {}",
+                container_name,
+                sanitize_docker_error(&stderr)
+            ))
         }
     }
 }
@@ -844,9 +861,12 @@ pub fn cleanup_orphaned_containers() -> Result<OrphanCleanupResult, String> {
         .args([
             "ps",
             "-a",
-            "--filter", "name=handy-sandbox-",
-            "--filter", "name=handy-support-sandbox-",
-            "--format", "{{.Names}}",
+            "--filter",
+            "name=handy-sandbox-",
+            "--filter",
+            "name=handy-support-sandbox-",
+            "--format",
+            "{{.Names}}",
         ])
         .output()
         .map_err(|e| format!("Failed to list containers: {}", e))?;
@@ -887,9 +907,9 @@ pub fn cleanup_orphaned_containers() -> Result<OrphanCleanupResult, String> {
         .iter()
         .filter_map(|s| {
             s.metadata.as_ref().and_then(|m| {
-                m.issue_ref.as_ref().and_then(|ref_str| {
-                    ref_str.split('#').last().and_then(|n| n.parse().ok())
-                })
+                m.issue_ref
+                    .as_ref()
+                    .and_then(|ref_str| ref_str.split('#').last().and_then(|n| n.parse().ok()))
             })
         })
         .collect();
@@ -1003,7 +1023,9 @@ pub fn generate_devcontainer_json(config: &DevContainerConfig) -> String {
             features_map.insert(feature.id.clone(), serde_json::json!({}));
         } else {
             // Convert string options to JSON values
-            let options_obj: serde_json::Map<String, serde_json::Value> = feature.options.iter()
+            let options_obj: serde_json::Map<String, serde_json::Value> = feature
+                .options
+                .iter()
                 .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
                 .collect();
             features_map.insert(feature.id.clone(), serde_json::Value::Object(options_obj));
@@ -1054,15 +1076,23 @@ pub fn setup_devcontainer_for_worktree(
 
     // Add environment variables for credentials
     if let Some(token) = gh_token {
-        config.container_env.insert("GH_TOKEN".to_string(), token.to_string());
-        config.container_env.insert("GITHUB_TOKEN".to_string(), token.to_string());
+        config
+            .container_env
+            .insert("GH_TOKEN".to_string(), token.to_string());
+        config
+            .container_env
+            .insert("GITHUB_TOKEN".to_string(), token.to_string());
     }
     if let Some(key) = anthropic_key {
-        config.container_env.insert("ANTHROPIC_API_KEY".to_string(), key.to_string());
+        config
+            .container_env
+            .insert("ANTHROPIC_API_KEY".to_string(), key.to_string());
     }
 
     // Add issue context
-    config.container_env.insert("HANDY_ISSUE_REF".to_string(), issue_ref.to_string());
+    config
+        .container_env
+        .insert("HANDY_ISSUE_REF".to_string(), issue_ref.to_string());
 
     // Generate and write the devcontainer.json
     let json_content = generate_devcontainer_json(&config);
@@ -1088,7 +1118,8 @@ pub fn is_devcontainer_cli_available() -> bool {
 pub fn start_devcontainer(worktree_path: &str) -> Result<String, String> {
     if !is_devcontainer_cli_available() {
         return Err(
-            "devcontainer CLI not found. Install with: npm install -g @devcontainers/cli".to_string()
+            "devcontainer CLI not found. Install with: npm install -g @devcontainers/cli"
+                .to_string(),
         );
     }
 
@@ -1114,7 +1145,14 @@ pub fn exec_in_devcontainer(worktree_path: &str, command: &str) -> Result<String
     }
 
     let output = Command::new("devcontainer")
-        .args(["exec", "--workspace-folder", worktree_path, "sh", "-c", command])
+        .args([
+            "exec",
+            "--workspace-folder",
+            worktree_path,
+            "sh",
+            "-c",
+            command,
+        ])
         .output()
         .map_err(|e| format!("Failed to exec in devcontainer: {}", e))?;
 
@@ -1176,17 +1214,26 @@ pub fn check_claude_auth_volume() -> Result<ClaudeAuthVolumeStatus, String> {
         .output()
         .map_err(|e| format!("Failed to check auth data: {}", e))?;
 
-    let check_result = String::from_utf8_lossy(&check_output.stdout).trim().to_string();
-    let has_auth = check_output.status.success() && !check_result.contains("NO_AUTH") && check_result.starts_with('{');
+    let check_result = String::from_utf8_lossy(&check_output.stdout)
+        .trim()
+        .to_string();
+    let has_auth = check_output.status.success()
+        && !check_result.contains("NO_AUTH")
+        && check_result.starts_with('{');
 
     // Try to get last modified time of auth file
     let last_auth = if has_auth {
         let stat_output = Command::new("docker")
             .args([
-                "run", "--rm",
-                "-v", &format!("{}:/claude-auth:ro", CLAUDE_AUTH_VOLUME),
+                "run",
+                "--rm",
+                "-v",
+                &format!("{}:/claude-auth:ro", CLAUDE_AUTH_VOLUME),
                 "alpine:latest",
-                "stat", "-c", "%y", "/claude-auth/.credentials.json"
+                "stat",
+                "-c",
+                "%y",
+                "/claude-auth/.credentials.json",
             ])
             .output()
             .ok()
@@ -1248,13 +1295,20 @@ pub fn launch_claude_auth_container() -> Result<String, String> {
     // We use node:20-bookworm as it has npm for installing claude-code
     let output = Command::new("docker")
         .args([
-            "run", "-it", "--rm",
-            "--name", container_name,
-            "-v", &format!("{}:/home/node/.claude", CLAUDE_AUTH_VOLUME),
-            "-e", "HOME=/home/node",
-            "-w", "/home/node",
+            "run",
+            "-it",
+            "--rm",
+            "--name",
+            container_name,
+            "-v",
+            &format!("{}:/home/node/.claude", CLAUDE_AUTH_VOLUME),
+            "-e",
+            "HOME=/home/node",
+            "-w",
+            "/home/node",
             "node:20-bookworm",
-            "bash", "-c",
+            "bash",
+            "-c",
             r#"
 echo "=================================================="
 echo "   Claude Code Authentication Setup"
@@ -1272,7 +1326,7 @@ echo ""
 echo "Type 'exit' when done."
 echo "=================================================="
 exec bash
-"#
+"#,
         ])
         .spawn()
         .map_err(|e| format!("Failed to launch auth container: {}", e))?;
@@ -1339,9 +1393,7 @@ echo "Done. You can close this window."
         .map_err(|e| format!("Failed to write script: {}", e))?;
 
     // Make it executable
-    let _ = Command::new("chmod")
-        .args(["+x", script_path])
-        .output();
+    let _ = Command::new("chmod").args(["+x", script_path]).output();
 
     // Open Terminal and run the script
     let result = Command::new("open")

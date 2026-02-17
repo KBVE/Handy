@@ -1088,10 +1088,7 @@ pub fn update_epic_sub_issue_agent(
 /// This path is used when spawning agents to know where to create worktrees.
 #[tauri::command]
 #[specta::specta]
-pub fn set_epic_local_repo_path(
-    app: AppHandle,
-    local_repo_path: String,
-) -> Result<(), String> {
+pub fn set_epic_local_repo_path(app: AppHandle, local_repo_path: String) -> Result<(), String> {
     crate::devops::orchestration::set_epic_local_repo_path(&app, &local_repo_path)
 }
 
@@ -1107,8 +1104,7 @@ pub async fn on_pipeline_item_complete(
     issue_number: u32,
     update_github: bool,
 ) -> Result<(), String> {
-    crate::devops::orchestration::on_pipeline_item_complete(&app, issue_number, update_github)
-        .await
+    crate::devops::orchestration::on_pipeline_item_complete(&app, issue_number, update_github).await
 }
 
 /// Merge a PR for a sub-issue that's in "Ready" state
@@ -1126,8 +1122,13 @@ pub async fn merge_ready_pr(
     merge_method: Option<String>,
     delete_branch: bool,
 ) -> Result<crate::devops::orchestration::MergeResult, String> {
-    crate::devops::orchestration::merge_ready_pr(&app, issue_number, merge_method.as_deref(), delete_branch)
-        .await
+    crate::devops::orchestration::merge_ready_pr(
+        &app,
+        issue_number,
+        merge_method.as_deref(),
+        delete_branch,
+    )
+    .await
 }
 
 /// Process all "Ready" sub-issues for the active Epic
@@ -1189,10 +1190,7 @@ pub fn get_sandbox_status(
 /// Get logs from a sandbox container
 #[tauri::command]
 #[specta::specta]
-pub fn get_sandbox_logs(
-    container_name: String,
-    tail: Option<u32>,
-) -> Result<String, String> {
+pub fn get_sandbox_logs(container_name: String, tail: Option<u32>) -> Result<String, String> {
     crate::devops::docker::get_sandbox_logs(&container_name, tail)
 }
 

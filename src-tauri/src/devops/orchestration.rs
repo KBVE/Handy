@@ -594,7 +594,8 @@ pub fn set_active_epic(app: &AppHandle, epic_info: &EpicInfo) -> ActiveEpicState
         .collect();
 
     // Preserve existing local_repo_path if we're re-linking the same epic
-    let existing_local_path = state.active_epic
+    let existing_local_path = state
+        .active_epic
         .as_ref()
         .filter(|e| e.epic_number == epic_info.epic_number)
         .and_then(|e| e.local_repo_path.clone());
@@ -620,7 +621,9 @@ pub fn set_active_epic(app: &AppHandle, epic_info: &EpicInfo) -> ActiveEpicState
 
 /// Extract phase status from the Epic issue body.
 /// Returns a map from phase number to status.
-fn extract_phase_statuses_from_body(body: &str) -> std::collections::HashMap<u32, TrackedPhaseStatus> {
+fn extract_phase_statuses_from_body(
+    body: &str,
+) -> std::collections::HashMap<u32, TrackedPhaseStatus> {
     let mut statuses = std::collections::HashMap::new();
     let mut current_phase: Option<u32> = None;
 
@@ -687,7 +690,9 @@ pub fn set_active_epic_from_recovery(
             s.metadata.as_ref().and_then(|m| {
                 m.issue_ref.as_ref().and_then(|ref_str| {
                     // Parse issue number from ref like "owner/repo#123"
-                    ref_str.split('#').nth(1)
+                    ref_str
+                        .split('#')
+                        .nth(1)
                         .and_then(|num| num.parse::<u32>().ok())
                         .map(|num| (num, s.name.clone()))
                 })
@@ -712,12 +717,19 @@ pub fn set_active_epic_from_recovery(
         .enumerate()
         .map(|(i, phase)| {
             let phase_num = (i + 1) as u32;
-            let phase_subs = phase_issues.get(&phase_num).map(|v| v.as_slice()).unwrap_or(&[]);
+            let phase_subs = phase_issues
+                .get(&phase_num)
+                .map(|v| v.as_slice())
+                .unwrap_or(&[]);
             // Use case-insensitive comparison since GitHub returns uppercase state
-            let completed = phase_subs.iter().filter(|s| s.state.eq_ignore_ascii_case("closed")).count();
+            let completed = phase_subs
+                .iter()
+                .filter(|s| s.state.eq_ignore_ascii_case("closed"))
+                .count();
 
             // Count open sub-issues
-            let open_subs: Vec<_> = phase_subs.iter()
+            let open_subs: Vec<_> = phase_subs
+                .iter()
                 .filter(|s| s.state.eq_ignore_ascii_case("open"))
                 .collect();
 
@@ -726,14 +738,15 @@ pub fn set_active_epic_from_recovery(
             let has_active_agent = phase_subs.iter().any(|s| {
                 let is_open = s.state.eq_ignore_ascii_case("open");
                 let has_pr = s.pr_url.is_some();
-                let has_agent = s.has_agent_working || issue_to_session.contains_key(&s.issue_number);
+                let has_agent =
+                    s.has_agent_working || issue_to_session.contains_key(&s.issue_number);
                 // Only count as active if open, has agent, but no PR yet
                 is_open && has_agent && !has_pr
             });
 
             // Check if all open sub-issues have PRs (phase is "ready" for merge)
-            let all_open_have_prs = !open_subs.is_empty() &&
-                open_subs.iter().all(|s| s.pr_url.is_some());
+            let all_open_have_prs =
+                !open_subs.is_empty() && open_subs.iter().all(|s| s.pr_url.is_some());
 
             // Determine status:
             // 1. If there are sub-issues, use their status
@@ -784,15 +797,20 @@ pub fn set_active_epic_from_recovery(
             let is_closed = s.state.eq_ignore_ascii_case("closed");
             // If PR exists, agent work is done (even if session still exists)
             let has_pr = s.pr_url.is_some();
-            let has_agent = !is_closed && !has_pr && (s.has_agent_working || session_name.is_some());
+            let has_agent =
+                !is_closed && !has_pr && (s.has_agent_working || session_name.is_some());
 
             TrackedSubIssue {
                 issue_number: s.issue_number,
                 title: s.title.clone(),
                 phase: s.phase,
                 state: s.state.to_lowercase(), // Normalize to lowercase for consistent comparison
-                agent_type: None, // Will be filled when agent is assigned
-                session_name: if is_closed { None } else { session_name.clone() },
+                agent_type: None,              // Will be filled when agent is assigned
+                session_name: if is_closed {
+                    None
+                } else {
+                    session_name.clone()
+                },
                 agent_session: if is_closed { None } else { session_name },
                 has_agent_working: has_agent,
                 url: s.url.clone(),
@@ -803,7 +821,8 @@ pub fn set_active_epic_from_recovery(
         .collect();
 
     // Preserve existing local_repo_path if we're re-loading the same epic
-    let existing_local_path = state.active_epic
+    let existing_local_path = state
+        .active_epic
         .as_ref()
         .filter(|e| e.epic_number == recovery.epic.epic_number)
         .and_then(|e| e.local_repo_path.clone());
@@ -905,15 +924,24 @@ pub async fn sync_active_epic(app: &AppHandle) -> Result<Option<ActiveEpicState>
 
     if let Some(active) = &state.active_epic {
         // Save local-only state before reload
-        let local_state: std::collections::HashMap<u32, (Option<String>, Option<u64>, Option<String>, Option<String>)> =
-            active.sub_issues.iter().map(|s| {
-                (s.issue_number, (
-                    s.pr_url.clone(),
-                    s.pr_number,
-                    s.agent_session.clone(),
-                    s.agent_type.clone(),
-                ))
-            }).collect();
+        let local_state: std::collections::HashMap<
+            u32,
+            (Option<String>, Option<u64>, Option<String>, Option<String>),
+        > = active
+            .sub_issues
+            .iter()
+            .map(|s| {
+                (
+                    s.issue_number,
+                    (
+                        s.pr_url.clone(),
+                        s.pr_number,
+                        s.agent_session.clone(),
+                        s.agent_type.clone(),
+                    ),
+                )
+            })
+            .collect();
 
         // Reload from GitHub
         let recovery = super::operations::epic::load_epic_for_recovery(
@@ -927,7 +955,9 @@ pub async fn sync_active_epic(app: &AppHandle) -> Result<Option<ActiveEpicState>
 
         // Restore local-only state that GitHub doesn't know about
         for sub_issue in &mut updated.sub_issues {
-            if let Some((pr_url, pr_number, agent_session, agent_type)) = local_state.get(&sub_issue.issue_number) {
+            if let Some((pr_url, pr_number, agent_session, agent_type)) =
+                local_state.get(&sub_issue.issue_number)
+            {
                 // Preserve PR info
                 if sub_issue.pr_url.is_none() {
                     sub_issue.pr_url = pr_url.clone();
@@ -1225,10 +1255,7 @@ pub async fn merge_ready_pr(
     let state = load_epic_state(app);
     let settings = crate::settings::get_settings(app);
 
-    let active = state
-        .active_epic
-        .as_ref()
-        .ok_or("No active Epic")?;
+    let active = state.active_epic.as_ref().ok_or("No active Epic")?;
 
     // Find the sub-issue
     let sub_issue = active
@@ -1342,7 +1369,11 @@ pub async fn merge_ready_pr(
             })
         }
         Err(e) => {
-            log::error!("Failed to spawn support worker for PR #{}: {}", pr_number, e);
+            log::error!(
+                "Failed to spawn support worker for PR #{}: {}",
+                pr_number,
+                e
+            );
             Ok(MergeResult {
                 issue_number,
                 pr_number,
@@ -1369,18 +1400,13 @@ pub async fn process_ready_prs(
     sync_active_epic(app).await?;
 
     let state = load_epic_state(app);
-    let active = state
-        .active_epic
-        .as_ref()
-        .ok_or("No active Epic")?;
+    let active = state.active_epic.as_ref().ok_or("No active Epic")?;
 
     // Find all sub-issues in "Ready" state (open with PR)
     let ready_issues: Vec<u32> = active
         .sub_issues
         .iter()
-        .filter(|s| {
-            s.state.eq_ignore_ascii_case("open") && s.pr_url.is_some()
-        })
+        .filter(|s| s.state.eq_ignore_ascii_case("open") && s.pr_url.is_some())
         .map(|s| s.issue_number)
         .collect();
 

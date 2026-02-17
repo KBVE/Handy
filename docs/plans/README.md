@@ -13,15 +13,16 @@ Each plan template is a markdown file with:
 
 ```yaml
 ---
-title: "Epic Title"                    # Required: Epic title
-description: "Brief description"       # Optional: Shown in template preview
-labels: ["label1", "label2"]          # Optional: GitHub labels to apply
-tracking_repo: "KBVE/KBVE"            # Optional: Repo for issue tracking
-working_repo: "KBVE/Handy"            # Optional: Repo for implementation
+title: "Epic Title" # Required: Epic title
+description: "Brief description" # Optional: Shown in template preview
+labels: ["label1", "label2"] # Optional: GitHub labels to apply
+tracking_repo: "KBVE/KBVE" # Optional: Repo for issue tracking
+working_repo: "KBVE/Handy" # Optional: Repo for implementation
 ---
 ```
 
 **Repository Fields:**
+
 - `tracking_repo`: Where Epic issues are created (defaults to current repo if not specified)
 - `working_repo`: Where code implementation happens (can be same as tracking_repo)
 
@@ -33,20 +34,24 @@ The markdown body should follow this structure:
 # Epic Title
 
 ## Goal
+
 1-2 sentence description of what this epic achieves.
 
 ## Success Metrics
+
 - Measurable criterion 1
 - Measurable criterion 2
 
 ## Phases
 
 ### Phase N: Phase Name
+
 **Approach**: manual | agent-assisted | automated
 
 Description of phase.
 
 **Key Tasks**:
+
 - Task 1
 - Task 2
 
@@ -66,6 +71,7 @@ Description of phase.
 ## Parsing
 
 The GenericEpicCreator component:
+
 1. Lists all `.md` files in `docs/plans/`
 2. Parses frontmatter for metadata
 3. Extracts phases from `## Phases` section

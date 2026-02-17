@@ -25,6 +25,7 @@ Describe what this epic achieves in 1-2 sentences. Focus on the outcome and valu
 Describe what happens in this phase and the overall approach.
 
 **Key Tasks**:
+
 - Task 1
 - Task 2
 - Task 3
@@ -41,6 +42,7 @@ Describe what happens in this phase and the overall approach.
 Describe the next phase.
 
 **Key Tasks**:
+
 - Task 1
 - Task 2
 

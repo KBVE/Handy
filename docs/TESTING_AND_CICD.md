@@ -46,6 +46,7 @@ Create shared test infrastructure in `src-tauri/tests/common/`:
 #### Core Function Unit Tests
 
 **tmux.rs** (Priority: High):
+
 - `parse_session_name()` - Valid/invalid formats
 - `build_session_env()` - Metadata serialization
 - `parse_session_metadata()` - Complete/missing fields
@@ -54,6 +55,7 @@ Create shared test infrastructure in `src-tauri/tests/common/`:
 - Env var escaping/quoting
 
 **worktree.rs** (Priority: High):
+
 - `parse_branch_name()` - Issue ref to branch name
 - `check_worktree_collision()` - Collision detection
 - `parse_worktree_list()` - git worktree list parsing
@@ -61,12 +63,14 @@ Create shared test infrastructure in `src-tauri/tests/common/`:
 - Branch name sanitization
 
 **github.rs** (Priority: Medium):
+
 - `parse_agent_metadata()` - Valid/malformed/missing metadata
 - `format_issue_ref()` - URL and number formats
 - `build_label_args()` - Empty/multiple labels
 - Issue comment parsing
 
 **dependencies.rs** (Priority: Low):
+
 - `parse_version()` - gh/tmux/claude version strings
 - Detector functions with mocked output
 
@@ -86,12 +90,14 @@ Create shared test infrastructure in `src-tauri/tests/common/`:
 #### Test Environment Setup
 
 Create `src-tauri/tests/integration/` directory:
+
 - `test_agent_spawning.rs` - Agent lifecycle (spawn, cleanup, collision)
 - `test_pr_workflow.rs` - PR creation and auto-cleanup after merge
 - `test_session_recovery.rs` - Recovery from tmux/GitHub, orphan detection
 - `test_worktree_ops.rs` - Worktree creation, removal, listing
 
 Each integration test:
+
 - Creates temporary git repository
 - Uses custom tmux socket (`-L handy-test-{pid}`)
 - Mocks GitHub API calls (no network requests)
@@ -100,6 +106,7 @@ Each integration test:
 #### Key Test Examples
 
 **Agent Spawning** (`test_agent_spawning.rs`):
+
 ```rust
 #[test]
 #[serial]
@@ -113,6 +120,7 @@ fn test_spawn_agent_full_workflow() {
 ```
 
 **Session Recovery** (`test_session_recovery.rs`):
+
 ```rust
 #[test]
 #[serial]
@@ -241,6 +249,7 @@ echo "✅ Pre-commit checks passed!"
 #### Branch Protection Rules
 
 Configure in GitHub repository settings:
+
 - Require status checks to pass before merging
 - Require branches to be up to date
 - Required checks: test-rust (ubuntu, macos, windows)
@@ -263,6 +272,7 @@ Configure in GitHub repository settings:
 #### Multi-Machine Coordination Tests
 
 **test_multi_machine.rs**:
+
 ```rust
 #[test]
 fn test_remote_agent_detection() {
@@ -281,6 +291,7 @@ fn test_concurrent_agents_no_collision() {
 #### Error Recovery Tests
 
 **test_error_handling.rs**:
+
 ```rust
 #[test]
 fn test_spawn_agent_when_gh_cli_missing() {
@@ -308,18 +319,23 @@ fn test_recovery_with_corrupted_metadata() {
 ## Risk Mitigation
 
 ### Tests interfere with developer's local tmux sessions
+
 **Mitigation**: Always use custom socket (`-L handy-test-{pid}`)
 
 ### Integration tests are slow
+
 **Mitigation**: Parallelize where possible, use `#[ignore]` for expensive tests, only run quick tests in pre-commit
 
 ### Platform-specific failures (Windows tmux issues)
+
 **Mitigation**: Conditional compilation `#[cfg(not(windows))]`, skip tmux tests on Windows
 
 ### Flaky tests due to timing issues
+
 **Mitigation**: Proper wait/retry logic, avoid hard-coded sleeps, deterministic mocks, `serial_test` crate
 
 ### Tests create real GitHub issues/PRs during development
+
 **Mitigation**: Mock all GitHub API calls, never use real tokens in tests
 
 ---
@@ -331,6 +347,7 @@ AI-assisted Epic planning that analyzes markdown plan files and automatically ge
 ### Overview
 
 This feature allows you to:
+
 1. Write a detailed project plan in markdown
 2. Let an AI agent (Claude or Aider) analyze it
 3. Automatically create an Epic issue with all Sub-issues on GitHub
@@ -344,10 +361,12 @@ Markdown Plan → AI Agent Analysis → Epic Structure → GitHub Issues Created
 ### Prerequisites
 
 **For Claude agent** (recommended):
+
 - Set environment variable: `ANTHROPIC_API_KEY=your-api-key`
 - Uses Claude Sonnet 4.5 via API
 
 **For Aider agent**:
+
 - Install Aider: `pip install aider-chat`
 - Ensure `aider` command is in PATH
 
@@ -370,12 +389,14 @@ Markdown Plan → AI Agent Analysis → Epic Structure → GitHub Issues Created
 Your markdown plan should include:
 
 **Essential Information:**
+
 - **Epic Title**: Main heading or explicit title
 - **Goal**: 1-2 sentence description
 - **Success Metrics**: Measurable outcomes
 - **Phases**: Major stages with approach (manual/agent-assisted/automated)
 
 **For Each Sub-Issue:**
+
 - Title, goal/objective
 - Tasks breakdown
 - Acceptance criteria
@@ -389,19 +410,23 @@ Your markdown plan should include:
 # CI/CD Testing Infrastructure
 
 ## Goal
+
 Build comprehensive testing and CI/CD infrastructure for the multi-agent DevOps system.
 
 ## Success Metrics
+
 - [ ] 100+ total tests
 - [ ] > 70% code coverage
 - [ ] CI/CD running on all PRs
 
 ## Phase 1: Foundation
+
 **Approach**: manual
 
 Build test utilities and infrastructure (test mocks, fixtures, helpers).
 
 **Tasks**:
+
 - Create test utilities module
 - Set up mock framework
 - Build test fixtures
@@ -409,11 +434,13 @@ Build test utilities and infrastructure (test mocks, fixtures, helpers).
 **Estimated Time**: 1-2 days
 
 ## Phase 2: Integration Tests
+
 **Approach**: agent-assisted
 
 Comprehensive integration tests for agent workflows.
 
 **Tasks**:
+
 - Test agent spawning
 - Test worktree management
 - Test PR creation
@@ -425,6 +452,7 @@ Comprehensive integration tests for agent workflows.
 ### AI Agent Prompt
 
 The agent receives a structured prompt asking it to extract:
+
 1. Epic title, goal, success metrics, phases, labels
 2. Sub-issues for each phase with detailed breakdown
 
@@ -458,27 +486,35 @@ The agent returns JSON in a specific format that the system uses to create GitHu
 ### Common Errors
 
 **ANTHROPIC_API_KEY not set**:
+
 ```
 ANTHROPIC_API_KEY not set. Set it in your environment or use 'aider' agent type.
 ```
+
 Solution: `export ANTHROPIC_API_KEY=your-key` or use Aider
 
 **File not found**:
+
 ```
 Failed to read plan file: No such file or directory
 ```
+
 Solution: Check file path is absolute and file exists
 
 **Invalid JSON from agent**:
+
 ```
 Failed to parse agent output as JSON
 ```
+
 Solution: Agent didn't return valid JSON - check plan complexity or try different agent
 
 **GitHub API errors**:
+
 ```
 API error: 401 Unauthorized
 ```
+
 Solution: Ensure `gh` CLI is authenticated: `gh auth login`
 
 ### Best Practices
@@ -501,12 +537,14 @@ After creating Epic + Sub-issues:
 ### Architecture
 
 **Backend (Rust)**: `src-tauri/src/devops/operations/plan.rs`
+
 - `plan_from_markdown()`: Main entry point
 - `spawn_planning_agent()`: Spawns Claude/Aider with prompt
 - `parse_agent_output()`: Extracts JSON from agent response
 - Creates Epic + Sub-issues via operations module
 
 **Frontend (TypeScript)**: `src/components/settings/devops/MarkdownEpicPlanner.tsx`
+
 - Form for file path, repo, agent selection
 - Invokes `plan_epic_from_markdown` command
 - Displays results with links to GitHub
@@ -521,21 +559,25 @@ After creating Epic + Sub-issues:
 ## Success Metrics
 
 ### Phase 1 Complete:
+
 - ✅ 40+ unit tests
 - ✅ Test utilities established
 - ✅ >80% coverage for parsing functions
 
 ### Phase 2 Complete:
+
 - ✅ 20+ integration tests
 - ✅ All critical workflows tested
 - ✅ End-to-end scenarios verified
 
 ### Phase 3 Complete:
+
 - ✅ CI/CD running tests automatically
 - ✅ Coverage >50%
 - ✅ Pre-commit hooks active
 
 ### Phase 4 Complete:
+
 - ✅ 100+ total tests
 - ✅ Coverage >70%
 - ✅ All edge cases covered
